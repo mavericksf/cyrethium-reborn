@@ -5,7 +5,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y live-build curl ca-certificates xorriso mtools dosfstools
 
-lb clean --binary || true
+lb clean || true
 
 LB_OPTS=(
     --distribution trixie
