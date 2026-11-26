@@ -7,3 +7,7 @@ chmod +x /opt/anti-exploit/core/* /opt/anti-exploit/extra/* 2>/dev/null || true
 for svc in cyrethium-firstboot.service cyrethium-cleanup-logs.service cyrethium-cleanup-swap.service cyrethium-cleanup-temp.service permission-hardening.service; do
     systemctl enable "$svc" 2>/dev/null || true
 done
+
+for svc in usbguard.service usbguard-dbus.service clamav-freshclam-once.service clamav-freshclam-once.timer; do
+    systemctl disable "$svc" 2>/dev/null || true
+done
