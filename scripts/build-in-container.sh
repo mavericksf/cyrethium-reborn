@@ -17,7 +17,7 @@ LB_OPTS=(
     --apt-recommends true
     --iso-application "Cyrethium Reborn"
     --iso-volume "CYRETHIUM_REBORN"
-    --bootappend-live "boot=live components quiet splash"
+    --bootappend-live "boot=live components quiet splash hostname=cyrethium"
 )
 
 lb config "${LB_OPTS[@]}"

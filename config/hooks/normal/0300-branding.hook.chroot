@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+echo "cyrethium" > /etc/hostname
+
+if [ -f /usr/lib/os-release ]; then
+    sed -i 's|^PRETTY_NAME=.*|PRETTY_NAME="Cyrethium Reborn (Debian 13 Trixie)"|' /usr/lib/os-release
+    sed -i 's|^NAME=.*|NAME="Cyrethium Reborn"|' /usr/lib/os-release
+    sed -i 's|^HOME_URL=.*|HOME_URL="https://github.com/mavericksf/cyrethium-reborn"|' /usr/lib/os-release
+fi
+
+echo "Cyrethium Reborn (Debian 13 Trixie)" > /etc/issue
+echo "Cyrethium Reborn (Debian 13 Trixie)" > /etc/issue.net
