@@ -8,3 +8,13 @@ binary/
 .build/
 __pycache__/
 *.pyc
+*.sha256
+live-image-*
+chroot.packages.*
+config/binary
+config/bootstrap
+config/build
+config/chroot
+config/common
+config/source
+local/
