@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+chmod +x /usr/local/bin/* /usr/bin/cyreth* /usr/bin/anti-exploitsuite /usr/bin/firstboot /usr/bin/liveboot /usr/bin/monerothium /usr/bin/permissionhardening /usr/bin/plaztek 2>/dev/null || true
+chmod +x /opt/anti-exploit/core/* /opt/anti-exploit/extra/* 2>/dev/null || true
+
+for svc in cyrethium-firstboot.service cyrethium-cleanup-logs.service cyrethium-cleanup-swap.service cyrethium-cleanup-temp.service permission-hardening.service; do
+    systemctl enable "$svc" 2>/dev/null || true
+done

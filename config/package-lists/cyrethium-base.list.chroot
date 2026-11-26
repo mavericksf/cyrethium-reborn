@@ -1,0 +1,45 @@
+# Ambiente base, live e instalador
+live-boot
+live-config
+live-config-systemd
+mate-desktop-environment-core
+mate-terminal
+lightdm
+network-manager
+network-manager-applet
+calamares
+calamares-settings-debian
+firefox-esr
+
+# Privacidade, anonimato e rede
+tor
+torsocks
+nyx
+proxychains4
+dnscrypt-proxy
+nftables
+iptables
+macchanger
+bmon
+nload
+tcpdump
+tshark
+
+# Seguranca, sandbox e utilitarios dos scripts
+bubblewrap
+firejail
+usbguard
+clamav
+clamav-daemon
+chkrootkit
+secure-delete
+mat2
+gnupg
+openssl
+curl
+wget
+git
+conky-all
+python3-gi
+gir1.2-gtk-3.0
+zenity
