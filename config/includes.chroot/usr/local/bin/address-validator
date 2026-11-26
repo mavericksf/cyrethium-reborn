@@ -1,0 +1,389 @@
+#!/usr/bin/env python3
+"""
+Cryptocurrency Address Validator Tool
+Validates Bitcoin, Ethereum, Litecoin addresses
+"""
+
+import sys
+import re
+import hashlib
+import base58
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                            QHBoxLayout, QLabel, QPushButton, QLineEdit, 
+                            QTextEdit, QGroupBox, QComboBox)
+from PyQt5.QtCore import Qt, QDateTime
+from PyQt5.QtGui import QFont
+
+# ---- Minimal Bech32 / SegWit utilities (BIP-0173 / BIP-0350) ----
+BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+BECH32M_CONST = 0x2bc830a3
+
+def _bech32_polymod(values):
+    generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]
+    chk = 1
+    for v in values:
+        b = chk >> 25
+        chk = ((chk & 0x1ffffff) << 5) ^ v
+        for i in range(5):
+            chk ^= generators[i] if ((b >> i) & 1) else 0
+    return chk
+
+def _bech32_hrp_expand(hrp):
+    return [ord(x) >> 5 for x in hrp] + [0] + [ord(x) & 31 for x in hrp]
+
+def _bech32_verify_checksum(hrp, data):
+    pm = _bech32_polymod(_bech32_hrp_expand(hrp) + data)
+    if pm == 1:
+        return 'bech32'
+    if pm == BECH32M_CONST:
+        return 'bech32m'
+    return None
+
+def _bech32_decode(addr):
+    if any(ord(x) < 33 or ord(x) > 126 for x in addr):
+        return None
+    if addr.lower() != addr and addr.upper() != addr:
+        return None
+    addr = addr.lower()
+    pos = addr.rfind('1')
+    if pos < 1 or pos + 7 > len(addr) or len(addr) > 90:
+        return None
+    hrp = addr[:pos]
+    data = []
+    for c in addr[pos+1:]:
+        d = BECH32_CHARSET.find(c)
+        if d == -1:
+            return None
+        data.append(d)
+    spec = _bech32_verify_checksum(hrp, data)
+    if spec is None:
+        return None
+    return hrp, data[:-6], spec
+
+def _convertbits(data, frombits, tobits, pad=True):
+    acc = 0
+    bits = 0
+    ret = []
+    maxv = (1 << tobits) - 1
+    max_acc = (1 << (frombits + tobits - 1)) - 1
+    for value in data:
+        if value < 0 or (value >> frombits):
+            return None
+        acc = ((acc << frombits) | value) & max_acc
+        bits += frombits
+        while bits >= tobits:
+            bits -= tobits
+            ret.append((acc >> bits) & maxv)
+    if pad:
+        if bits:
+            ret.append((acc << (tobits - bits)) & maxv)
+    elif bits >= frombits or ((acc << (tobits - bits)) & maxv):
+        return None
+    return ret
+
+def _segwit_decode(hrp_expected, addr):
+    dec = _bech32_decode(addr)
+    if dec is None:
+        return None, None, None
+    hrp, data, spec = dec
+    if hrp != hrp_expected or not data:
+        return None, None, None
+    ver = data[0]
+    if ver > 16:
+        return None, None, None
+    prog = _convertbits(data[1:], 5, 8, False)
+    if prog is None:
+        return None, None, None
+    if len(prog) < 2 or len(prog) > 40:
+        return None, None, None
+    if ver == 0 and spec != 'bech32':
+        return None, None, None
+    if ver != 0 and spec != 'bech32m':
+        return None, None, None
+    return ver, bytes(prog), spec
+
+
+class AddressValidator:
+    """Cryptocurrency address validation utilities"""
+    
+    @staticmethod
+    def validate_bitcoin_address(address):
+        """Validate Bitcoin address (Base58 and Bech32/Bech32m)."""
+        try:
+            addr = address.strip()
+            lower = addr.lower()
+
+            # Bech32/Bech32m SegWit addresses (bc1..., tb1...)
+            if lower.startswith("bc1") or lower.startswith("tb1"):
+                hrp = "bc" if lower.startswith("bc1") else "tb"
+                ver, prog, spec = _segwit_decode(hrp, addr)
+                if ver is None:
+                    return False, "Invalid Bech32 checksum or witness program"
+                # Additional constraints for v0
+                if ver == 0 and len(prog) not in (20, 32):
+                    return False, "Invalid v0 witness program length"
+                net = "mainnet" if hrp == "bc" else "testnet"
+                seg = "SegWit (bech32)" if ver == 0 else "SegWit (bech32m)"
+                return True, f"Valid Bitcoin {net} address {seg}"
+
+            # Legacy Base58 addresses (1..., 3...)
+            if len(addr) < 26 or len(addr) > 35:
+                return False, "Invalid length (legacy Base58)"
+            decoded = base58.b58decode(addr)
+            if len(decoded) != 25:
+                return False, "Invalid decoded length"
+            payload = decoded[:-4]
+            checksum = decoded[-4:]
+            hash1 = hashlib.sha256(payload).digest()
+            hash2 = hashlib.sha256(hash1).digest()
+            if checksum == hash2[:4]:
+                version = decoded[0]
+                if version == 0x00:
+                    return True, "Valid Bitcoin mainnet address (Base58)"
+                elif version == 0x6f:
+                    return True, "Valid Bitcoin testnet address (Base58)"
+                elif version == 0x05:
+                    return True, "Valid Bitcoin P2SH address (Base58)"
+                else:
+                    return False, f"Unknown version byte: {hex(version)}"
+            else:
+                return False, "Invalid checksum"
+
+        except Exception as e:
+            return False, f"Validation error: {str(e)}"
+
+    @staticmethod
+    def validate_ethereum_address(address):
+        """Validate Ethereum address"""
+        try:
+            if not address.startswith('0x'):
+                return False, "Must start with 0x"
+            
+            if len(address) != 42:
+                return False, "Must be 42 characters long"
+            
+            # Check if all characters are hex
+            hex_part = address[2:]
+            if not all(c in '0123456789abcdefABCDEF' for c in hex_part):
+                return False, "Contains invalid characters"
+            
+            # Check EIP-55 checksum if mixed case
+            if hex_part != hex_part.lower() and hex_part != hex_part.upper():
+                from Crypto.Hash import keccak
+                address_hash = keccak.new(digest_bits=256)
+                address_hash.update(hex_part.lower().encode('utf-8'))
+                hash_hex = address_hash.hexdigest()
+                
+                for i, char in enumerate(hex_part):
+                    if char.isalpha():
+                        if int(hash_hex[i], 16) >= 8:
+                            if char != char.upper():
+                                return False, "Invalid EIP-55 checksum"
+                        else:
+                            if char != char.lower():
+                                return False, "Invalid EIP-55 checksum"
+                
+                return True, "Valid Ethereum address with EIP-55 checksum"
+            else:
+                return True, "Valid Ethereum address (no checksum)"
+                
+        except Exception as e:
+            return False, f"Validation error: {str(e)}"
+    
+    @staticmethod
+    def validate_litecoin_address(address):
+        """Validate Litecoin address"""
+        try:
+            if len(address) < 26 or len(address) > 35:
+                return False, "Invalid length"
+            
+            # Decode base58
+            decoded = base58.b58decode(address)
+            if len(decoded) != 25:
+                return False, "Invalid decoded length"
+            
+            # Check checksum
+            payload = decoded[:-4]
+            checksum = decoded[-4:]
+            hash1 = hashlib.sha256(payload).digest()
+            hash2 = hashlib.sha256(hash1).digest()
+            
+            if checksum == hash2[:4]:
+                version = decoded[0]
+                if version == 0x30:
+                    return True, "Valid Litecoin mainnet address"
+                elif version == 0x6f:
+                    return True, "Valid Litecoin testnet address"
+                else:
+                    return False, f"Unknown version byte: {hex(version)}"
+            else:
+                return False, "Invalid checksum"
+                
+        except Exception as e:
+            return False, f"Validation error: {str(e)}"
+
+
+class AddressValidatorApp(QMainWindow):
+    """Address Validator GUI Application"""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet(self.get_dark_theme())
+    
+    def init_ui(self):
+        self.setWindowTitle("Address Validator")
+        self.setGeometry(200, 200, 600, 500)
+        
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Simple header
+        header = QLabel("Address Validator")
+        header.setAlignment(Qt.AlignCenter)
+        header.setFont(QFont("Arial", 16, QFont.Bold))
+        
+        # Cryptocurrency selection
+        crypto_label = QLabel("Cryptocurrency:")
+        self.crypto_combo = QComboBox()
+        self.crypto_combo.addItems(["Bitcoin", "Ethereum", "Litecoin"])
+        
+        # Address input
+        address_label = QLabel("Address:")
+        self.address_input = QLineEdit()
+        self.address_input.setPlaceholderText("Enter address to validate...")
+        
+        # Validate button
+        self.validate_button = QPushButton("Validate")
+        self.validate_button.clicked.connect(self.validate_address)
+        
+        # Results
+        self.results_text = QTextEdit()
+        self.results_text.setReadOnly(True)
+        self.results_text.setPlainText("Enter an address to validate...")
+        
+        # Layout
+        layout.addWidget(header)
+        layout.addWidget(crypto_label)
+        layout.addWidget(self.crypto_combo)
+        layout.addWidget(address_label)
+        layout.addWidget(self.address_input)
+        layout.addWidget(self.validate_button)
+        layout.addWidget(self.results_text)
+        
+        central_widget.setLayout(layout)
+        
+    
+    def validate_address(self):
+        """Validate the entered address"""
+        address = self.address_input.text().strip()
+        crypto_text = self.crypto_combo.currentText()
+        
+        # Extract crypto type from display text
+        if "Bitcoin" in crypto_text:
+            crypto_type = "Bitcoin"
+        elif "Ethereum" in crypto_text:
+            crypto_type = "Ethereum"
+        elif "Litecoin" in crypto_text:
+            crypto_type = "Litecoin"
+        else:
+            crypto_type = "Unknown"
+        
+        if not address:
+            self.results_text.setText("Please enter an address to validate\n\nTip: Copy and paste the address to avoid typing errors.")
+            return
+        
+        self.results_text.clear()
+        self.results_text.append("CYRETHIUM ADDRESS VALIDATION")
+        self.results_text.append("=" * 60)
+        self.results_text.append(f"Cryptocurrency: {crypto_type}")
+        self.results_text.append(f"Address: {address}")
+        self.results_text.append(f"Started: {QDateTime.currentDateTime().toString()}")
+        self.results_text.append("=" * 60)
+        
+        # Validate based on crypto type
+        if crypto_type == "Bitcoin":
+            is_valid, message = AddressValidator.validate_bitcoin_address(address)
+        elif crypto_type == "Ethereum":
+            is_valid, message = AddressValidator.validate_ethereum_address(address)
+        elif crypto_type == "Litecoin":
+            is_valid, message = AddressValidator.validate_litecoin_address(address)
+        else:
+            is_valid, message = False, "Unsupported cryptocurrency"
+        
+        # Display enhanced results
+        if is_valid:
+            self.results_text.append("\nVALIDATION SUCCESSFUL")
+            self.results_text.append("━" * 40)
+            self.results_text.append(f"Result: VALID {crypto_type.upper()} ADDRESS")
+            self.results_text.append(f"Details: {message}")
+            self.results_text.append(f"Security: Address format is correct")
+            self.results_text.append(f"Status: Ready for transactions")
+            self.statusBar().showMessage(f"Valid {crypto_type} address confirmed")
+        else:
+            self.results_text.append("\nVALIDATION FAILED")
+            self.results_text.append("━" * 40)
+            self.results_text.append(f"Result: INVALID ADDRESS")
+            self.results_text.append(f"Error: {message}")
+            self.results_text.append(f"Suggestion: Please check the address format")
+            self.results_text.append(f"Tip: Ensure you selected the correct cryptocurrency")
+            self.statusBar().showMessage("Invalid address detected")
+        
+        self.results_text.append("\n" + "=" * 60)
+        self.results_text.append(f"Completed: {QDateTime.currentDateTime().toString()}")
+        self.results_text.append("Privacy: No data stored or transmitted")
+    
+    def get_dark_theme(self):
+        """Simple clean theme"""
+        return """
+            QMainWindow {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QWidget {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QLineEdit {
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: white;
+            }
+            QTextEdit {
+                border: 1px solid #ccc;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #4CAF50;
+                border: none;
+                color: white;
+                padding: 8px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QComboBox {
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: white;
+            }
+        """
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("Cyrethium Address Validator")
+    
+    window = AddressValidatorApp()
+    window.show()
+    
+    sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()

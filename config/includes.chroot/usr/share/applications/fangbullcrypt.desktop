@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Fangbull Crypt
+Comment=Age based file encryption tool
+Comment[tr]=Age tabanlı dosya şifreleme aracı
+Comment[es]=Herramienta de cifrado de archivos basada en Age
+Comment[fr]=Outil de chiffrement de fichiers basé sur Age
+Comment[de]=Age-basiertes Dateiverschlüsselungstool
+Comment[ar]=أداة تشفير الملفات القائمة على Age
+Comment[ru]=Инструмент шифрования файлов на основе Age
+Comment[zh]=基于Age的文件加密工具
+Comment[ja]=Ageベースのファイル暗号化ツール
+Comment[ko]=Age 기반 파일 암호화 도구
+Comment[pt]=Ferramenta de criptografia de arquivos baseada em Age
+Comment[it]=Strumento di crittografia dei file basato su Age
+Comment[nl]=Age-gebaseerde bestandsversleutelingstool
+Comment[sv]=Age-baserat filkrypteringsverktyg
+Comment[pl]=Narzędzie szyfrowania plików oparte na Age
+Exec=mate-terminal -- bash -c "/usr/local/bin/fangbullcrypt; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/fangbull.png
+Categories=Encryption;
+StartupNotify=false

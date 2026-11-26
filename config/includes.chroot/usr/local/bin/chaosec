@@ -1,0 +1,904 @@
+#!/usr/bin/env python3
+
+import argparse
+import random
+import socket
+import threading
+import time
+import requests
+import dns.resolver
+import os
+import sys
+import signal
+import json
+import base64
+import hashlib
+import string
+import urllib.parse
+from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta
+import ipaddress
+from pathlib import Path
+
+
+running = True
+
+MAX_RUNTIME_SECONDS = 300
+
+def display_ethical_warning():
+    warning_text = """
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                               ETHICAL WARNING                                ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  This tool is a SECURITY TOOL designed to provide protection against         ║
+║  MITM (Man-in-the-Middle) attacks and traffic analysis.                      ║
+║                                                                              ║
+║   LONG-TERM USAGE WARNING:                                                   ║
+║  • Extended use may be detected as DoS/DDoS attack activity                  ║
+║  • Your IP address may be blocked or blacklisted                             ║
+║  • Your ISP may suspend your account                                         ║
+║  • Legal investigation may be initiated                                      ║
+║  • You may encounter CAPTCHA or rate limiting from websites                  ║
+║                                                                              ║
+║   AUTHORIZED USES ONLY:                                                      ║
+║  • Legitimate privacy protection                                             ║
+║  • Authorized security research                                              ║
+║  • Network testing on your own infrastructure                                ║
+║  • Learning in controlled educational environments                           ║
+║                                                                              ║
+║   X PROHIBITED USES:                                                         ║
+║  • DoS/DDoS attacks                                                          ║
+║  • Overwhelming third-party services                                         ║
+║  • Circumventing legal restrictions                                          ║
+║  • Malicious or illegal activities                                           ║
+║                                                                              ║
+║   AUTO-STOP: This tool runs for maximum 5 minutes and automatically          ║
+║   stops. This duration is limited for security reasons.                      ║
+║                                                                              ║
+║   By using this tool, you accept full responsibility.                        ║
+║    Authors are not liable for misuse or any resulting damages.               ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+USE THIS TOOL ONLY WHEN ABSOLUTELY NECESSARY!
+"""
+    
+    print(warning_text)
+    
+    while True:
+        response = input("Do you understand and accept these terms? (y/N): ").strip().lower()
+        
+        if response in ['n', 'no', '']:
+            print("\n[INFO] Tool usage cancelled. Stay safe!")
+            sys.exit(0)
+        elif response in ['y', 'yes']:
+            print("\n[INFO] Ethical terms accepted. Starting tool...")
+            print("[WARNING] Maximum runtime: 5 minutes")
+            print("[WARNING] Tool will auto-stop after this duration.\n")
+            break
+        else:
+            print("[ERROR] Please answer 'y' for yes or 'n' for no.")
+
+def format_time_remaining(seconds):
+    if seconds <= 0:
+        return "0:00"
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    return f"{minutes}:{seconds:02d}"
+
+TRAFFIC_PATTERNS = {
+    "browsing": {
+        "http_ratio": 0.6, 
+        "dns_ratio": 0.3,
+        "tcp_ratio": 0.1,
+        "udp_ratio": 0.05,
+        "interval_min": 1.0,
+        "interval_max": 8.0,
+        "description": "Normal web browsing pattern"
+    },
+    "streaming": {
+        "http_ratio": 0.8,
+        "dns_ratio": 0.1,
+        "tcp_ratio": 0.05,
+        "udp_ratio": 0.2,
+        "interval_min": 0.5,
+        "interval_max": 2.0,
+        "description": "Video/audio streaming pattern"
+    },
+    "gaming": {
+        "http_ratio": 0.2,
+        "dns_ratio": 0.1,
+        "tcp_ratio": 0.3,
+        "udp_ratio": 0.5,
+        "interval_min": 0.1,
+        "interval_max": 1.0,
+        "description": "Online gaming traffic pattern"
+    },
+    "chaotic": {
+        "http_ratio": 1.0,
+        "dns_ratio": 1.0,
+        "tcp_ratio": 1.0,
+        "udp_ratio": 1.0,
+        "interval_min": 0.1,
+        "interval_max": 0.5,
+        "description": "Maximum chaos mode - all traffic types"
+    },
+    "stealth": {
+        "http_ratio": 0.4,
+        "dns_ratio": 0.2,
+        "tcp_ratio": 0.05,
+        "udp_ratio": 0.02,
+        "interval_min": 5.0,
+        "interval_max": 30.0,
+        "description": "Low-profile stealth mode"
+    },
+    "research": {
+        "http_ratio": 0.7,
+        "dns_ratio": 0.4,
+        "tcp_ratio": 0.2,
+        "udp_ratio": 0.1,
+        "interval_min": 2.0,
+        "interval_max": 15.0,
+        "description": "Academic/research browsing pattern"
+    },
+    "social": {
+        "http_ratio": 0.9,
+        "dns_ratio": 0.3,
+        "tcp_ratio": 0.15,
+        "udp_ratio": 0.1,
+        "interval_min": 0.8,
+        "interval_max": 5.0,
+        "description": "Social media usage pattern"
+    }
+}
+
+class ChaosecTool:
+    def __init__(self):
+        self.threads = []
+        self.intensity = 1.0
+        self.pattern = "browsing"
+        self.tor_mode = False
+        self.stats = {"dns": 0, "http": 0, "tcp": 0, "udp": 0}
+        self.config_file = Path.home() / ".config" / "chaosec" / "config.json"
+        self.custom_domains = []
+        self.start_time = None
+        self.total_requests = 0
+        self.max_duration = MAX_RUNTIME_SECONDS
+        self.timer_thread = None
+        self.last_warning_time = 0
+        
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        self.load_config()
+    
+    def load_config(self):
+        try:
+            if self.config_file.exists():
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    self.custom_domains = config.get('custom_domains', [])
+                    print(f"[INFO] Loaded {len(self.custom_domains)} custom domains")
+        except Exception as e:
+            print(f"[WARNING] Failed to load config: {e}")
+    
+    def save_config(self):
+        try:
+            config = {
+                'custom_domains': self.custom_domains,
+                'last_updated': datetime.now().isoformat()
+            }
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f, indent=2)
+            print(f"[INFO] Configuration saved")
+        except Exception as e:
+            print(f"[ERROR] Failed to save config: {e}")
+    
+    
+    def add_custom_domain(self, domain: str):
+        if domain not in self.custom_domains:
+            self.custom_domains.append(domain)
+            self.save_config()
+            print(f"[INFO] Added custom domain: {domain}")
+    
+    def show_statistics(self):
+        if self.start_time:
+            runtime = datetime.now() - self.start_time
+            print(f"\n{'='*50}")
+            print(f"CHAOSEC STATISTICS")
+            print(f"{'='*50}")
+            print(f"Runtime: {runtime}")
+            print(f"Total requests: {self.total_requests}")
+            print(f"Requests per minute: {self.total_requests / (runtime.total_seconds() / 60):.1f}")
+            print(f"\nTraffic breakdown:")
+            for traffic_type, count in self.stats.items():
+                percentage = (count / max(self.total_requests, 1)) * 100
+                print(f"  {traffic_type.upper()}: {count} ({percentage:.1f}%)")
+            print(f"\nPattern: {self.pattern} ({TRAFFIC_PATTERNS[self.pattern]['description']})")
+            print(f"Intensity: {self.intensity}x")
+            print(f"Tor mode: {'Enabled' if self.tor_mode else 'Disabled'}")
+            print(f"{'='*50}")
+    
+    def list_patterns(self):
+        print(f"\n{'='*60}")
+        print(f"AVAILABLE TRAFFIC PATTERNS")
+        print(f"{'='*60}")
+        for pattern, config in TRAFFIC_PATTERNS.items():
+            print(f"\n{pattern.upper()}:")
+            print(f"  Description: {config['description']}")
+            print(f"  HTTP ratio: {config['http_ratio']}")
+            print(f"  DNS ratio: {config['dns_ratio']}")
+            print(f"  TCP ratio: {config['tcp_ratio']}")
+            print(f"  UDP ratio: {config['udp_ratio']}")
+            print(f"  Interval: {config['interval_min']}-{config['interval_max']}s")
+        print(f"{'='*60}")
+        
+    def start(self, args):
+        self.intensity = args.intensity
+        self.pattern = args.pattern
+        self.tor_mode = args.tor_mode
+        self.start_time = datetime.now()
+        
+        if hasattr(args, 'list_patterns') and args.list_patterns:
+            self.list_patterns()
+            return
+            
+            
+        if hasattr(args, 'show_stats') and args.show_stats:
+            self.show_statistics()
+            return
+        
+        self._show_banner(args)
+        
+        if args.dns_noise:
+            thread = threading.Thread(target=self.generate_dns_noise)
+            thread.daemon = True
+            thread.start()
+            self.threads.append(thread)
+            print(f"[INFO] DNS noise generator active")
+            
+        if args.http_flood:
+            thread = threading.Thread(target=self.generate_http_noise)
+            thread.daemon = True
+            thread.start()
+            self.threads.append(thread)
+            print(f"[INFO] HTTP traffic generator active")
+            
+        if args.tcp_noise:
+            thread = threading.Thread(target=self.generate_tcp_noise)
+            thread.daemon = True
+            thread.start()
+            self.threads.append(thread)
+            print(f"[INFO] TCP connection noise active")
+            
+        if args.udp_noise:
+            thread = threading.Thread(target=self.generate_udp_noise)
+            thread.daemon = True
+            thread.start()
+            self.threads.append(thread)
+            print(f"[INFO] UDP packet noise active")
+            
+            
+        if args.verbose:
+            thread = threading.Thread(target=self._print_stats)
+            thread.daemon = True
+            thread.start()
+            self.threads.append(thread)
+        
+        active_generators = [
+            args.dns_noise, args.http_flood, args.tcp_noise, args.udp_noise
+        ]
+        
+        if not any(active_generators):
+            print(f"[WARNING] No noise generators selected. Use --help for options.")
+            return
+            
+        self.start_duration_timer()
+        
+        try:
+            while running:
+                elapsed = (datetime.now() - self.start_time).total_seconds()
+                remaining = self.max_duration - elapsed
+                
+                if remaining <= 60 and time.time() - self.last_warning_time >= 30:
+                    print(f"[WARNING] Time remaining: {format_time_remaining(remaining)}")
+                    self.last_warning_time = time.time()
+                elif remaining <= 120 and time.time() - self.last_warning_time >= 60:
+                    print(f"[WARNING] Time remaining: {format_time_remaining(remaining)}")
+                    self.last_warning_time = time.time()
+                
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n[INFO] Stopped by user.")
+            self.stop()
+    
+    def _show_banner(self, args):
+        banner = """
+        ██████╗██╗  ██╗ █████╗  ██████╗ ███████╗███████╗ ██████╗
+       ██╔════╝██║  ██║██╔══██╗██╔═══██╗██╔════╝██╔════╝██╔════╝
+       ██║     ███████║███████║██║   ██║███████╗█████╗  ██║     
+       ██║     ██╔══██║██╔══██║██║   ██║╚════██║██╔══╝  ██║     
+       ╚██████╗██║  ██║██║  ██║╚██████╔╝███████║███████╗╚██████╗
+        ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝ ╚═════╝
+        Traffic Obfuscation Tool for Cyrethium
+        """
+        print(banner)
+        
+        print(f"[INFO] Starting with pattern: {self.pattern}, intensity: {self.intensity}x")
+        active_modules = []
+        if args.dns_noise: active_modules.append("DNS")
+        if args.http_flood: active_modules.append("HTTP")
+        if args.tcp_noise: active_modules.append("TCP")
+        if args.udp_noise: active_modules.append("UDP")
+        
+        print(f"[INFO] Active modules: {' '.join(active_modules)}")
+        
+        if self.tor_mode:
+            print(f"[INFO] Tor mode: Active - Traffic will be optimized for Tor network")
+        
+    def _print_stats(self):
+        while running:
+            time.sleep(10)
+            print(f"[STATS] Traffic (last 10s): DNS:{self.stats['dns']} HTTP:{self.stats['http']} TCP:{self.stats['tcp']} UDP:{self.stats['udp']}")
+            self.stats = {"dns": 0, "http": 0, "tcp": 0, "udp": 0}
+            
+    def start_duration_timer(self):
+        def duration_handler():
+            global running
+            time.sleep(self.max_duration)
+            if running:
+                print(f"\n[WARNING] MAXIMUM TIME REACHED! (5 minutes)")
+                print(f"[INFO] Tool automatically stopping for security reasons...")
+                running = False
+                
+        self.timer_thread = threading.Thread(target=duration_handler)
+        self.timer_thread.daemon = True
+        self.timer_thread.start()
+    
+    def stop(self):
+        global running
+        running = False
+        print(f"[INFO] Stopping all traffic generators...")
+        
+        if self.start_time:
+            elapsed = (datetime.now() - self.start_time).total_seconds()
+            print(f"[INFO] Total runtime: {format_time_remaining(elapsed)}")
+            print(f"[INFO] Total requests: {self.total_requests}")
+        
+        for thread in self.threads:
+            thread.join(timeout=1.0)
+        print(f"[INFO] Chaosec stopped successfully. Stay safe!")
+        
+    def generate_dns_noise(self):
+        domains = [
+            "google.com", "facebook.com", "amazon.com", "github.com", "gitlab.com",
+            "microsoft.com", "apple.com", "adobe.com", "oracle.com", "ibm.com",
+            "intel.com", "nvidia.com", "amd.com", "qualcomm.com", "cisco.com",
+            "vmware.com", "salesforce.com", "zoom.us", "slack.com", "dropbox.com",
+            "box.com", "atlassian.com", "jetbrains.com", "docker.com", "kubernetes.io",
+            "twitter.com", "instagram.com", "linkedin.com", "tiktok.com", "snapchat.com",
+            "pinterest.com", "tumblr.com", "discord.com", "telegram.org", "whatsapp.com",
+            "signal.org", "mastodon.social", "reddit.com", "quora.com", "medium.com",
+            "netflix.com", "youtube.com", "twitch.tv", "spotify.com", "soundcloud.com",
+            "vimeo.com", "dailymotion.com", "hulu.com", "disneyplus.com", "primevideo.com",
+            "hbomax.com", "paramount.com", "peacocktv.com", "crunchyroll.com", "funimation.com",
+            "wikipedia.org", "wikimedia.org", "bbc.com", "cnn.com", "reuters.com",
+            "ap.org", "npr.org", "pbs.org", "theguardian.com", "nytimes.com",
+            "washingtonpost.com", "wsj.com", "ft.com", "economist.com", "time.com",
+            "newsweek.com", "forbes.com", "bloomberg.com", "techcrunch.com", "wired.com",
+            "arstechnica.com", "theverge.com", "engadget.com", "gizmodo.com", "cnet.com",
+            "coursera.org", "edx.org", "khanacademy.org", "udemy.com", "pluralsight.com",
+            "lynda.com", "skillshare.com", "codecademy.com", "freecodecamp.org", "w3schools.com",
+            "mdn.mozilla.org", "developer.mozilla.org", "stackoverflow.com", "stackexchange.com",
+            "superuser.com", "serverfault.com", "askubuntu.com", "mathoverflow.net",
+            "mozilla.org", "firefox.com", "chrome.com", "chromium.org", "webkit.org",
+            "nodejs.org", "python.org", "java.com", "openjdk.org",
+            "rust-lang.org", "golang.org", "php.net", "ruby-lang.org", "swift.org",
+            "kotlinlang.org", "scala-lang.org", "clojure.org", "haskell.org", "erlang.org",
+            
+            # Linux and operating systems
+            "debian.org", "ubuntu.com", "redhat.com", "fedoraproject.org", "opensuse.org",
+            "archlinux.org", "gentoo.org", "slackware.com", "centos.org", "kali.org",
+            "parrotsec.org", "blackarch.org", "linux.org", "kernel.org", "gnu.org",
+            "fsf.org", "linuxfoundation.org", "eff.org", "torproject.org",
+            
+            # Cloud and infrastructure
+            "aws.amazon.com", "cloud.google.com", "azure.microsoft.com", "digitalocean.com",
+            "linode.com", "vultr.com", "heroku.com", "netlify.com", "vercel.com",
+            "cloudflare.com", "akamai.com", "fastly.com", "maxcdn.com", "jsdelivr.com",
+            "ebay.com", "etsy.com", "shopify.com", "woocommerce.com", "magento.com",
+            "prestashop.com", "bigcommerce.com", "squarespace.com", "wix.com", "wordpress.com",
+            "wordpress.org", "drupal.org", "joomla.org", "ghost.org", "jekyllrb.com",
+            "protonmail.com", "tutanota.com", "duckduckgo.com", "startpage.com", "searx.org",
+            "brave.com", "tails.boum.org", "qubes-os.org", "whonix.org",
+            "privacytools.io", "privacyguides.org", "surveillance-self-defense.org",
+            
+            # Gaming
+            "steam.com", "epicgames.com", "origin.com", "uplay.com", "battle.net",
+            "minecraft.net", "roblox.com", "unity.com", "unrealengine.com", "godotengine.org",
+            "coinbase.com", "binance.com", "kraken.com", "gemini.com", "bitcoin.org",
+            "ethereum.org", "monero.org", "zcash.com", "litecoin.org", "cardano.org",
+            
+            # International organizations
+            "un.org", "who.int", "unesco.org", "unicef.org", "redcross.org",
+            "amnesty.org", "hrw.org", "transparency.org", "wikileaks.org",
+            
+            # Science and research
+            "nature.com", "science.org", "plos.org", "arxiv.org", "researchgate.net",
+            "academia.edu", "scholar.google.com", "pubmed.ncbi.nlm.nih.gov", "ieee.org",
+            "acm.org", "springer.com", "elsevier.com", "wiley.com", "taylor-francis.com"
+        ]
+        
+        subdomains = [
+            "www", "mail", "api", "blog", "shop", "store", "dev", "admin", 
+            "cdn", "img", "media", "video", "static", "app", "mobile", "m",
+            "support", "help", "docs", "wiki", "forum", "community", "news",
+            "beta", "staging", "test", "demo", "preview", "secure", "login",
+            "dashboard", "panel", "control", "manage", "account", "profile",
+            "search", "download", "upload", "files", "assets", "resources",
+            "status", "health", "monitor", "analytics", "metrics", "stats"
+        ]
+        
+        resolver = dns.resolver.Resolver()
+        
+        while running:
+            try:
+                if random.random() > TRAFFIC_PATTERNS[self.pattern]["dns_ratio"] * self.intensity:
+                    time.sleep(0.1)
+                    continue
+                    
+                if random.random() > 0.5:
+                    subdomain = random.choice(subdomains)
+                    domain = f"{subdomain}.{random.choice(domains)}"
+                else:
+                    domain = random.choice(domains)
+                    
+                qtype = random.choice(['A', 'AAAA', 'MX', 'TXT', 'NS'])
+                resolver.resolve(domain, qtype)
+                
+                self.stats["dns"] += 1
+                self.total_requests += 1
+                
+                sleep_time = random.uniform(
+                    TRAFFIC_PATTERNS[self.pattern]["interval_min"],
+                    TRAFFIC_PATTERNS[self.pattern]["interval_max"]
+                ) / self.intensity
+                
+                if self.tor_mode and sleep_time < 1.0:
+                    sleep_time = max(sleep_time, 1.0)
+                
+                time.sleep(sleep_time)
+            except Exception:
+                pass
+                
+    def generate_http_noise(self):
+        urls = [
+            "https://httpbin.org/get", "https://httpbin.org/json", "https://httpbin.org/user-agent",
+            "https://jsonplaceholder.typicode.com/posts", "https://reqres.in/api/users",
+            "https://en.wikipedia.org/wiki/Special:Random", "https://www.wikipedia.org",
+            "https://www.wikimedia.org", "https://commons.wikimedia.org",
+            "https://www.khanacademy.org", "https://www.coursera.org", "https://www.edx.org",
+            "https://www.freecodecamp.org", "https://www.codecademy.com",
+            
+            # Open source and development
+            "https://www.mozilla.org", "https://developer.mozilla.org", "https://www.firefox.com",
+            "https://www.python.org", "https://docs.python.org", "https://pypi.org",
+            "https://www.rust-lang.org", "https://doc.rust-lang.org", "https://crates.io",
+            "https://golang.org", "https://pkg.go.dev", "https://nodejs.org", "https://www.npmjs.com",
+            "https://github.com", "https://gitlab.com", "https://bitbucket.org",
+            
+            # Linux and operating systems
+            "https://www.debian.org", "https://www.ubuntu.com", "https://www.archlinux.org",
+            "https://www.redhat.com", "https://getfedora.org", "https://www.opensuse.org",
+            "https://www.gentoo.org", "https://www.kali.org", "https://www.kernel.org",
+            "https://www.gnu.org", "https://www.fsf.org", "https://www.linuxfoundation.org",
+            "https://www.eff.org", "https://www.torproject.org", "https://tails.boum.org",
+            "https://www.qubes-os.org", "https://www.whonix.org", "https://privacyguides.org",
+            "https://www.protonmail.com", "https://www.duckduckgo.com", "https://www.brave.com",
+            "https://www.bbc.com", "https://www.reuters.com", "https://www.ap.org",
+            "https://www.npr.org", "https://www.pbs.org", "https://www.theguardian.com",
+            "https://www.techcrunch.com", "https://www.wired.com", "https://arstechnica.com",
+            "https://www.theverge.com", "https://www.engadget.com", "https://www.cnet.com",
+            
+            # Science and research
+            "https://www.nature.com", "https://www.science.org", "https://www.plos.org",
+            "https://arxiv.org", "https://scholar.google.com", "https://www.researchgate.net",
+            "https://www.ieee.org", "https://www.acm.org", "https://pubmed.ncbi.nlm.nih.gov",
+            
+            # International organizations
+            "https://www.un.org", "https://www.who.int", "https://www.unesco.org",
+            "https://www.unicef.org", "https://www.redcross.org", "https://www.amnesty.org",
+            "https://www.google.com", "https://www.microsoft.com", "https://www.apple.com",
+            "https://www.amazon.com", "https://www.adobe.com", "https://www.oracle.com",
+            "https://www.ibm.com", "https://www.intel.com", "https://www.nvidia.com",
+            
+            # Cloud and infrastructure
+            "https://aws.amazon.com", "https://cloud.google.com", "https://azure.microsoft.com",
+            "https://www.digitalocean.com", "https://www.linode.com", "https://www.vultr.com",
+            "https://www.cloudflare.com", "https://www.netlify.com", "https://vercel.com",
+            "https://wordpress.org", "https://www.drupal.org", "https://www.joomla.org",
+            "https://ghost.org", "https://jekyllrb.com", "https://www.gatsbyjs.com",
+            "https://nextjs.org", "https://nuxtjs.org", "https://svelte.dev",
+            "https://store.steampowered.com", "https://www.epicgames.com",
+            "https://unity.com", "https://www.unrealengine.com", "https://godotengine.org",
+            "https://bitcoin.org", "https://ethereum.org", "https://www.monero.org",
+            "https://z.cash", "https://litecoin.org", "https://cardano.org"
+        ]
+        
+        user_agents = [
+            # Chrome on Windows
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            
+            # Chrome on macOS
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            
+            # Chrome on Linux
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            
+            # Firefox on Windows
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/117.0",
+            "Mozilla/5.0 (Windows NT 11.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
+            
+            # Firefox on macOS
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/118.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 13.6; rv:109.0) Gecko/20100101 Firefox/119.0",
+            
+            # Firefox on Linux
+            "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+            "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/118.0",
+            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0",
+            
+            # Safari on macOS
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+            
+            # Edge on Windows
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.0.0",
+            "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0",
+            
+            # Mobile browsers - iOS Safari
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+            "Mozilla/5.0 (iPad; CPU OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
+            
+            # Mobile browsers - Android Chrome
+            "Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+            "Mozilla/5.0 (Linux; Android 13; SM-A515F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+            "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+            
+            # Mobile browsers - Android Firefox
+            "Mozilla/5.0 (Mobile; rv:109.0) Gecko/119.0 Firefox/119.0",
+            "Mozilla/5.0 (Mobile; rv:109.0) Gecko/118.0 Firefox/118.0",
+            
+            # Opera
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 OPR/105.0.0.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 OPR/105.0.0.0",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 OPR/105.0.0.0",
+            
+            # Brave Browser
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Brave/119",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Brave/119",
+            
+            # Vivaldi
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Vivaldi/6.4.3160.44",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Vivaldi/6.4.3160.44",
+            
+            # Tor Browser (for privacy-focused traffic)
+            "Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0",
+            "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/115.0"
+        ]
+        
+        session = requests.Session()
+        session.max_redirects = 3
+        
+        request_paths = [
+            "/", "/index.html", "/home", "/about", "/contact", "/services",
+            "/products", "/blog", "/news", "/support", "/help", "/faq",
+            "/login", "/register", "/search", "/sitemap.xml", "/robots.txt",
+            "/api/v1/status", "/api/health", "/api/version", "/api/info",
+            "/static/css/main.css", "/static/js/app.js", "/static/images/logo.png",
+            "/assets/style.css", "/assets/script.js", "/favicon.ico",
+            "/feed.xml", "/rss.xml", "/atom.xml", "/manifest.json",
+            "/privacy", "/terms", "/legal", "/cookies", "/security",
+            "/download", "/docs", "/documentation", "/wiki", "/community"
+        ]
+        
+        common_headers = {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Cache-Control': 'max-age=0'
+        }
+        
+        while running:
+            try:
+                if random.random() > TRAFFIC_PATTERNS[self.pattern]["http_ratio"] * self.intensity:
+                    time.sleep(0.1)
+                    continue
+                    
+                base_url = random.choice(urls)
+                if random.random() > 0.7:
+                    path = random.choice(request_paths)
+                    url = base_url.rstrip('/') + path
+                else:
+                    url = base_url
+                
+                headers = common_headers.copy()
+                headers["User-Agent"] = random.choice(user_agents)
+                
+                if random.random() > 0.5:
+                    headers['Referer'] = random.choice(urls)
+                if random.random() > 0.8:
+                    headers['X-Requested-With'] = 'XMLHttpRequest'
+                if random.random() > 0.9:
+                    headers['DNT'] = '1'
+                
+                request_type = random.choices(
+                    ['GET', 'POST', 'HEAD', 'OPTIONS'],
+                    weights=[70, 15, 10, 5],
+                    k=1
+                )[0]
+                
+                if request_type == 'GET':
+                    if random.random() > 0.7:
+                        params = {
+                            'q': random.choice(['search', 'query', 'test', 'info']),
+                            'page': random.randint(1, 5),
+                            'limit': random.choice([10, 20, 50])
+                        }
+                        session.get(url, headers=headers, params=params, timeout=10)
+                    else:
+                        session.get(url, headers=headers, timeout=10)
+                        
+                elif request_type == 'POST':
+                    post_data = {
+                        "timestamp": str(datetime.now()),
+                        "session_id": str(random.randint(100000, 999999)),
+                        "user_agent": headers["User-Agent"][:50],
+                        "action": random.choice(['search', 'login', 'register', 'contact'])
+                    }
+                    session.post(url, headers=headers, json=post_data, timeout=10)
+                    
+                elif request_type == 'HEAD':
+                    session.head(url, headers=headers, timeout=10)
+                    
+                elif request_type == 'OPTIONS':
+                    session.options(url, headers=headers, timeout=10)
+                
+                self.stats["http"] += 1
+                self.total_requests += 1
+                
+                sleep_time = random.uniform(
+                    TRAFFIC_PATTERNS[self.pattern]["interval_min"],
+                    TRAFFIC_PATTERNS[self.pattern]["interval_max"]
+                ) / self.intensity
+                
+                if self.tor_mode and sleep_time < 1.0:
+                    sleep_time = max(sleep_time, 1.0)
+                
+                time.sleep(sleep_time)
+            except Exception:
+                pass
+                
+    def generate_tcp_noise(self):
+        common_ports = [80, 443, 8080, 8443, 22, 25, 143, 993, 587, 110, 995]
+        targets = [
+            "mozilla.org", "kernel.org",
+            "debian.org", "ubuntu.com", "archlinux.org", 
+            "python.org", "rust-lang.org", "golang.org",
+            "gnu.org", "fsf.org", "linuxfoundation.org",
+            "opensuse.org", "redhat.com", "kali.org"
+        ]
+        
+        http_requests = [
+            b"GET / HTTP/1.1\r\nHost: {}\r\nUser-Agent: Mozilla/5.0\r\n\r\n",
+            b"HEAD / HTTP/1.1\r\nHost: {}\r\nUser-Agent: Chrome/92.0\r\n\r\n",
+            b"GET /index.html HTTP/1.1\r\nHost: {}\r\nUser-Agent: Firefox/89.0\r\n\r\n",
+            b"GET /about HTTP/1.1\r\nHost: {}\r\nUser-Agent: Safari/605.1\r\n\r\n"
+        ]
+        
+        while running:
+            try:
+                if random.random() > TRAFFIC_PATTERNS[self.pattern]["tcp_ratio"] * self.intensity:
+                    time.sleep(0.1)
+                    continue
+                    
+                target = random.choice(targets)
+                port = random.choice(common_ports)
+                
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                sock.connect((target, port))
+                
+                if port in [80, 443, 8080, 8443]:
+                    request = random.choice(http_requests)
+                    sock.send(request.format(target.encode()))
+                    
+                    if random.random() > 0.7:
+                        sock.recv(4096)
+                
+                sock.close()
+                
+                self.stats["tcp"] += 1
+                self.total_requests += 1
+                
+                sleep_time = random.uniform(
+                    TRAFFIC_PATTERNS[self.pattern]["interval_min"],
+                    TRAFFIC_PATTERNS[self.pattern]["interval_max"]
+                ) / self.intensity
+                
+                if self.tor_mode and sleep_time < 1.0:
+                    sleep_time = max(sleep_time, 1.0)
+                
+                time.sleep(sleep_time)
+            except Exception:
+                pass
+    
+    def generate_udp_noise(self):
+        common_ports = [53, 123, 161, 162, 1900, 5353, 27015, 3478, 3479]
+        
+        def get_random_ip():
+            while True:
+                ip = ".".join(str(random.randint(1, 254)) for _ in range(4))
+                if not ipaddress.ip_address(ip).is_private:
+                    return ip
+        
+        dns_payload = b"\x00\x01\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x07mozilla\x03org\x00\x00\x01\x00\x01"
+        ntp_payload = b"\x1b" + b"\0" * 47
+        
+        while running:
+            try:
+                if random.random() > TRAFFIC_PATTERNS[self.pattern]["udp_ratio"] * self.intensity:
+                    time.sleep(0.1)
+                    continue
+                
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                
+                port = random.choice(common_ports)
+                if port == 53:
+                    payload = dns_payload
+                elif port == 123:
+                    payload = ntp_payload
+                else:
+                    payload = bytes(random.getrandbits(8) for _ in range(random.randint(16, 128)))
+                
+                if random.random() > 0.5:
+                    target_ip = get_random_ip()
+                else:
+                    target_ip = "8.8.8.8"
+                
+                sock.sendto(payload, (target_ip, port))
+                sock.close()
+                
+                self.stats["udp"] += 1
+                self.total_requests += 1
+                
+                sleep_time = random.uniform(
+                    TRAFFIC_PATTERNS[self.pattern]["interval_min"],
+                    TRAFFIC_PATTERNS[self.pattern]["interval_max"]
+                ) / self.intensity
+                
+                if self.tor_mode and sleep_time < 1.0:
+                    sleep_time = max(sleep_time, 1.0)
+                
+                time.sleep(sleep_time)
+            except Exception:
+                pass
+
+def signal_handler(sig, frame):
+    global running
+    running = False
+    print("\n[INFO] Interrupt signal received, shutting down...")
+    sys.exit(0)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Chaosec - Traffic Obfuscation (Noise Generator) Tool for Cyrethium",
+        epilog="""Examples:
+  %(prog)s --dns-noise --http-flood --pattern browsing
+  %(prog)s --tcp-noise --udp-noise --tor-mode --intensity 2.0
+  %(prog)s --list-patterns
+  %(prog)s --all-noise --pattern chaotic --verbose""",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    traffic_group = parser.add_argument_group('Traffic Generators')
+    traffic_group.add_argument("--dns-noise", action="store_true", 
+                              help="Generate random DNS queries")
+    traffic_group.add_argument("--http-flood", action="store_true", 
+                              help="Generate random HTTP requests")
+    traffic_group.add_argument("--tcp-noise", action="store_true", 
+                              help="Generate random TCP connections")
+    traffic_group.add_argument("--udp-noise", action="store_true", 
+                              help="Generate random UDP packets")
+    # Onion noise functionality has been removed for security reasons
+    traffic_group.add_argument("--all-noise", action="store_true", 
+                              help="Enable all traffic generators")
+    
+    pattern_group = parser.add_argument_group('Traffic Patterns')
+    pattern_choices = list(TRAFFIC_PATTERNS.keys())
+    pattern_group.add_argument("--pattern", choices=pattern_choices, 
+                              default="browsing", help="Traffic pattern to simulate")
+    pattern_group.add_argument("--list-patterns", action="store_true", 
+                              help="List all available traffic patterns")
+    
+    config_group = parser.add_argument_group('Configuration')
+    config_group.add_argument("--intensity", type=float, default=1.0,
+                             help="Traffic intensity multiplier (0.1-10.0)")
+    config_group.add_argument("--tor-mode", action="store_true", 
+                             help="Optimize traffic patterns for Tor network")
+    config_group.add_argument("--duration", type=int, 
+                             help="Runtime duration (minutes, maximum 5 minutes)")
+    
+    domain_group = parser.add_argument_group('Domain Utilities')
+    domain_group.add_argument("--add-domain", metavar="DOMAIN",
+                            help="Add custom domain to configuration")
+    
+    info_group = parser.add_argument_group('Information')
+    info_group.add_argument("--verbose", "-v", action="store_true",
+                           help="Enable verbose output with statistics")
+    info_group.add_argument("--show-stats", action="store_true",
+                           help="Show detailed statistics")
+    info_group.add_argument("--version", action="version", version="Chaosec v2.1 - Enhanced Security Edition")
+    
+    parser.add_argument("--mode", choices=["standard", "chaotic"], default="standard",
+                       help="Legacy mode setting (use --pattern instead)")
+    
+    args = parser.parse_args()
+    
+    tool = ChaosecTool()
+    
+    if args.add_domain:
+        tool.add_custom_domain(args.add_domain)
+        return
+    
+    if args.all_noise:
+        args.dns_noise = True
+        args.http_flood = True
+        args.tcp_noise = True
+        args.udp_noise = True
+    
+    display_ethical_warning()
+    
+    if args.intensity < 0.1 or args.intensity > 10.0:
+        print("[ERROR] Intensity must be between 0.1 and 10.0")
+        sys.exit(1)
+    
+    if args.mode == "chaotic" and args.pattern == "browsing":
+        args.pattern = "chaotic"
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    if args.duration and args.duration > 5:
+        print(f"[WARNING] Specified duration ({args.duration} min) too long. Limited to maximum 5 minutes.")
+        args.duration = 5
+    elif not args.duration:
+        args.duration = 5
+    
+    print(f"[INFO] Tool will run for maximum {args.duration} minutes and stop automatically.")
+    
+    tool.start(args)
+
+if __name__ == "__main__":
+    main() 

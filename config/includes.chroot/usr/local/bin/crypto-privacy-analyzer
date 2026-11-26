@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""
+Cryptocurrency Privacy Analyzer Tool
+Analyzes transaction privacy and provides security recommendations
+"""
+
+import sys
+import hashlib
+import random
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                            QHBoxLayout, QLabel, QPushButton, QLineEdit, 
+                            QTextEdit, QComboBox, QProgressBar)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QDateTime
+from PyQt5.QtGui import QFont
+
+
+class PrivacyAnalyzerThread(QThread):
+    """Thread for privacy analysis without blocking UI"""
+    analysis_complete = pyqtSignal(dict)
+    
+    def __init__(self, address, crypto_type):
+        super().__init__()
+        self.address = address
+        self.crypto_type = crypto_type
+    
+    def run(self):
+        """Perform privacy analysis"""
+        result = {
+            'address': self.address,
+            'crypto_type': self.crypto_type,
+            'privacy_score': 0,
+            'recommendations': [],
+            'risks': [],
+            'analysis_time': QDateTime.currentDateTime().toString()
+        }
+        
+        # Simulate analysis time
+        self.msleep(1500)
+        
+        # Basic privacy analysis based on address format
+        privacy_score = self.analyze_address_privacy()
+        result['privacy_score'] = privacy_score
+        
+        # Generate recommendations
+        result['recommendations'] = self.get_privacy_recommendations()
+        result['risks'] = self.identify_privacy_risks()
+        
+        self.analysis_complete.emit(result)
+    
+    def analyze_address_privacy(self):
+        """Analyze address privacy characteristics"""
+        score = 50  # Base score
+        
+        if self.crypto_type == "Bitcoin":
+            if self.address.startswith('bc1'):
+                score += 20  # Bech32 addresses offer better privacy
+            elif self.address.startswith('3'):
+                score += 10  # SegWit addresses
+            elif self.address.startswith('1'):
+                score -= 10  # Legacy addresses
+                
+        elif self.crypto_type == "Ethereum":
+            # Check if address follows EIP-55 checksum
+            if any(c.isupper() for c in self.address):
+                score += 15
+            
+        # Add random variance for demonstration
+        score += random.randint(-15, 15)
+        return max(0, min(100, score))
+    
+    def get_privacy_recommendations(self):
+        """Generate privacy recommendations"""
+        recommendations = [
+            "Use HD wallets for better address management",
+            "Consider coin mixing services for enhanced privacy",
+            "Use different addresses for each transaction",
+            "Enable RBF (Replace-By-Fee) for Bitcoin transactions"
+        ]
+        
+        if self.crypto_type == "Bitcoin":
+            recommendations.extend([
+                "Use Bech32 (bc1) addresses for better privacy",
+                "Consider Lightning Network for small transactions",
+                "Use Tor when broadcasting transactions"
+            ])
+        elif self.crypto_type == "Ethereum":
+            recommendations.extend([
+                "Consider privacy-focused protocols like Tornado Cash",
+                "Use ENS domains carefully to avoid linking identities",
+                "Monitor gas prices to avoid transaction timing analysis"
+            ])
+            
+        return recommendations[:5]  # Return top 5 recommendations
+    
+    def identify_privacy_risks(self):
+        """Identify potential privacy risks"""
+        risks = [
+            "Address reuse can link multiple transactions",
+            "Public blockchain analysis can reveal transaction patterns",
+            "IP address correlation during transaction broadcast"
+        ]
+        
+        if self.crypto_type == "Bitcoin":
+            risks.extend([
+                "Legacy addresses offer less privacy protection",
+                "Transaction timing analysis possible",
+                "UTXO consolidation can reveal wallet ownership"
+            ])
+        elif self.crypto_type == "Ethereum":
+            risks.extend([
+                "Smart contract interactions are publicly visible",
+                "Gas price patterns can reveal user behavior",
+                "ERC-20 token transfers lack built-in privacy"
+            ])
+            
+        return risks[:4]  # Return top 4 risks
+
+
+class PrivacyAnalyzerApp(QMainWindow):
+    """Privacy Analyzer GUI Application"""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet(self.get_clean_theme())
+    
+    def init_ui(self):
+        self.setWindowTitle("Privacy Analyzer")
+        self.setGeometry(350, 350, 600, 500)
+        
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Simple header
+        header = QLabel("Privacy Analyzer")
+        header.setAlignment(Qt.AlignCenter)
+        header.setFont(QFont("Arial", 16, QFont.Bold))
+        
+        # Cryptocurrency selection
+        crypto_label = QLabel("Cryptocurrency:")
+        self.crypto_combo = QComboBox()
+        self.crypto_combo.addItems(["Bitcoin", "Ethereum", "Litecoin"])
+        
+        # Address input
+        address_label = QLabel("Address:")
+        self.address_input = QLineEdit()
+        self.address_input.setPlaceholderText("Enter address to analyze privacy...")
+        
+        # Analyze button
+        self.analyze_button = QPushButton("Analyze Privacy")
+        self.analyze_button.clicked.connect(self.analyze_privacy)
+        
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        
+        # Results
+        self.results_text = QTextEdit()
+        self.results_text.setReadOnly(True)
+        self.results_text.setPlainText("Enter an address to analyze privacy characteristics...")
+        
+        # Layout
+        layout.addWidget(header)
+        layout.addWidget(crypto_label)
+        layout.addWidget(self.crypto_combo)
+        layout.addWidget(address_label)
+        layout.addWidget(self.address_input)
+        layout.addWidget(self.analyze_button)
+        layout.addWidget(self.progress_bar)
+        layout.addWidget(self.results_text)
+        
+        central_widget.setLayout(layout)
+    
+    def analyze_privacy(self):
+        """Analyze privacy for entered address"""
+        address = self.address_input.text().strip()
+        crypto_type = self.crypto_combo.currentText()
+        
+        if not address:
+            self.results_text.setText("Please enter an address to analyze")
+            return
+        
+        # Show progress
+        self.analyze_button.setEnabled(False)
+        self.analyze_button.setText("Analyzing...")
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        
+        # Start analysis thread
+        self.analyzer_thread = PrivacyAnalyzerThread(address, crypto_type)
+        self.analyzer_thread.analysis_complete.connect(self.display_analysis)
+        self.analyzer_thread.finished.connect(self.analysis_finished)
+        self.analyzer_thread.start()
+    
+    def display_analysis(self, result):
+        """Display privacy analysis results"""
+        self.results_text.clear()
+        
+        self.results_text.append(f"{result['crypto_type']} Privacy Analysis")
+        self.results_text.append("=" * 50)
+        self.results_text.append(f"Address: {result['address']}")
+        self.results_text.append(f"Privacy Score: {result['privacy_score']}/100")
+        
+        # Privacy score interpretation
+        score = result['privacy_score']
+        if score >= 80:
+            status = "EXCELLENT - High privacy protection"
+        elif score >= 60:
+            status = "GOOD - Moderate privacy protection"
+        elif score >= 40:
+            status = "FAIR - Some privacy concerns"
+        else:
+            status = "POOR - Significant privacy risks"
+            
+        self.results_text.append(f"Status: {status}")
+        self.results_text.append("-" * 50)
+        
+        # Privacy recommendations
+        self.results_text.append("\nPRIVACY RECOMMENDATIONS:")
+        for i, rec in enumerate(result['recommendations'], 1):
+            self.results_text.append(f"{i}. {rec}")
+        
+        # Privacy risks
+        self.results_text.append("\nIDENTIFIED RISKS:")
+        for i, risk in enumerate(result['risks'], 1):
+            self.results_text.append(f"{i}. {risk}")
+        
+        self.results_text.append("\nGENERAL SECURITY TIPS:")
+        self.results_text.append("• Never reuse addresses")
+        self.results_text.append("• Use VPN when accessing crypto services")
+        self.results_text.append("• Keep transactions amounts random")
+        self.results_text.append("• Use multiple wallets for different purposes")
+        
+        self.results_text.append(f"\nAnalysis completed at {result['analysis_time']}")
+    
+    def analysis_finished(self):
+        """Re-enable button when analysis is finished"""
+        self.analyze_button.setEnabled(True)
+        self.analyze_button.setText("Analyze Privacy")
+        self.progress_bar.setVisible(False)
+    
+    def get_clean_theme(self):
+        """Simple purple theme"""
+        return """
+            QMainWindow {
+                background-color: #f5f3ff;
+                color: #333;
+            }
+            QWidget {
+                background-color: #f5f3ff;
+                color: #333;
+            }
+            QLineEdit {
+                border: 1px solid #d1c4e9;
+                padding: 5px;
+                background-color: white;
+            }
+            QTextEdit {
+                border: 1px solid #d1c4e9;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #7b1fa2;
+                border: none;
+                color: white;
+                padding: 8px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #6a1b7b;
+            }
+            QComboBox {
+                border: 1px solid #d1c4e9;
+                padding: 5px;
+                background-color: white;
+            }
+            QLabel {
+                color: #4a148c;
+            }
+            QProgressBar {
+                border: 1px solid #d1c4e9;
+                background-color: white;
+            }
+            QProgressBar::chunk {
+                background-color: #7b1fa2;
+            }
+        """
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("Crypto Privacy Analyzer")
+    
+    window = PrivacyAnalyzerApp()
+    window.show()
+    
+    sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()

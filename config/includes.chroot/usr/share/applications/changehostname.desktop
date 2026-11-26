@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Change Hostname
+Comment=Change system hostname with randomization options
+Comment[tr]=Sistem hostname'ini rastgele seçeneklerle değiştir
+Comment[es]=Cambiar el nombre de host del sistema con opciones de aleatoriedad
+Comment[fr]=Changer le nom d'hôte du système avec options de randomisation
+Comment[de]=System-Hostname mit Randomisierungsoptionen ändern
+Comment[ar]=تغيير اسم المضيف للنظام مع خيارات العشوائية
+Comment[ru]=Изменить имя хоста системы с параметрами рандомизации
+Comment[zh]=使用随机选项更改系统主机名
+Comment[ja]=ランダム化オプションでシステムホスト名を変更
+Comment[ko]=무작위 옵션으로 시스템 호스트명 변경
+Comment[pt]=Alterar nome do host do sistema com opções de randomização
+Comment[it]=Cambia il nome host del sistema con opzioni di randomizzazione
+Comment[nl]=Wijzig systeemhostnaam met randomisatie-opties
+Comment[sv]=Ändra systemets värdnamn med randomiseringsalternativ
+Comment[pl]=Zmień nazwę hosta systemu z opcjami randomizacji
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/changehostname; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=Privacy;
+StartupNotify=false

@@ -1,0 +1,2122 @@
+#!/usr/bin/env python3
+"""
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                     NetSecDragon Wireless Toolkit                         ║
+║              Unified Network Security Analysis Suite                      ║
+║                                                                           ║
+║  Modules:                                                                 ║
+║    1. NetSecDragon ANTI-FLOOD  - DDoS & Flood Attack Detection            ║
+║    2. NetSecDragon ANTI-SCAN   - Port Scan Detection & Monitoring         ║
+║    3. NetSecDragon ANTI-MITM   - ARP Analysis & MITM Detection            ║
+║    4. NetSecDragon ANTI-DEAUTH - WiFi Deauth Detection & Analysis         ║
+║                                                                           ║
+║  Developed by: root0emir                                                  ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+"""
+
+import subprocess
+import re
+import json
+import time
+import sys
+import os
+import psutil
+import ipaddress
+import socket
+import signal
+import argparse
+import datetime
+import threading
+from collections import defaultdict, Counter
+from datetime import datetime as dt, timedelta
+from colorama import init, Fore, Style
+from termcolor import colored
+
+# Windows compatibility
+try:
+    import pwd
+except ImportError:
+    pwd = None
+
+# Initialize colorama for colored output
+init(autoreset=True)
+
+
+# ============================================================================
+# MAIN NETSECDRAGON TOOLKIT CLASS
+# ============================================================================
+
+class NetSecDragonToolkit:
+    """Main toolkit manager with unified menu"""
+    
+    def __init__(self):
+        self.clear_screen()
+        
+    def clear_screen(self):
+        os.system('clear' if os.name == 'posix' else 'cls')
+        
+    def print_main_banner(self):
+        banner = f"""{Fore.CYAN}
+═══════════════════════════════════════════════════════════════════════════⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠤⠤⣤⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        ⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠻⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         ⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         ⣀⣀⣀⣀⣠⣾⣿⣿⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  ⣹⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⣿⣿⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀            ⣤⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⣀⠉⢿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀          ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣄⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⣤⣀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣀⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡍⠛⠿⣿⡛⢿⣿⣿⣿⣿⣿⣿⣿⣿⣍⡳⣦⡀
+        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠁⠀⠙⣿⣿⣇⠙⢿⣦⡀⠘⠇⠀⠙⢿⡏⠉⠻⣿⡝⠻⣿⣿⣿⣷
+⠀    ⠀⢨⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠀⠀⠀⠀⠀⢹⣿⣿⣆⠀⠙⢿⣄⠈⠀⠀⠈⠃⠀⠀⠘⠇⠀⠘⣿⠙⣿
+  ⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣷⣤⣀⠙⠷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠇
+⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠻⣿⣿⣦⡀⠀⠀⠈⠛⢶⣤⣀⣀⣀⣀⡀⠀⠀⠀⠀
+⠀⠀⠀ ⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⢿⣿⣟⡉⠀⡀⠀⠀⠉⠛⠛⠻⢭⡉⠂⠀⠀
+      ⢹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⠯⠤⠀⠀⠀⠀⠀⠀⠀⠈⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+═══════════════════════════════════════════════════════════════════════════
+
+{Fore.YELLOW}                WIRELESS SECURITY TOOLKIT {Style.RESET_ALL}
+{Fore.WHITE}                 ~ Developed by root0emir ~{Style.RESET_ALL}
+{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}
+"""
+        print(banner)
+        
+    def check_privileges(self):
+        """Check if running with root/admin privileges"""
+        if os.name == 'posix':
+            try:
+                return os.geteuid() == 0
+            except AttributeError:
+                return False
+        return True
+        
+    def main_menu(self):
+        """Main menu interface"""
+        while True:
+            self.clear_screen()
+            self.print_main_banner()
+            
+            if not self.check_privileges():
+                print(f"{Fore.YELLOW}⚠  Warning: Not running as root. Some modules may require elevated privileges.{Style.RESET_ALL}\n")
+            
+            print(f"\n{Fore.CYAN}════════════════════ SECURITY MODULES ════════════════════{Style.RESET_ALL}\n")
+            print(f"  {Fore.CYAN}[1]{Style.RESET_ALL} {Fore.YELLOW}NetSecDragon ANTI-FLOOD{Style.RESET_ALL}")
+            print(f"      DoS & Flood Attack Detection\n")
+            
+            print(f"  {Fore.CYAN}[2]{Style.RESET_ALL} {Fore.YELLOW}NetSecDragon ANTI-SCAN{Style.RESET_ALL}")
+            print(f"      Port Scan Detection & Monitoring\n")
+            
+            print(f"  {Fore.CYAN}[3]{Style.RESET_ALL} {Fore.YELLOW}NetSecDragon ANTI-MITM{Style.RESET_ALL}")
+            print(f"      ARP Analysis & MITM Detection\n")
+            
+            print(f"  {Fore.CYAN}[4]{Style.RESET_ALL} {Fore.YELLOW}NetSecDragon ANTI-DEAUTH{Style.RESET_ALL}")
+            print(f"      WiFi Deauth Detection & Analysis\n")
+            
+            print(f"  {Fore.RED}[0]{Style.RESET_ALL} {Fore.YELLOW}Exit Toolkit{Style.RESET_ALL}\n")
+            print(f"{Fore.CYAN}══════════════════════════════════════════════════════════{Style.RESET_ALL}\n")
+            
+            try:
+                choice = input(f"{Fore.CYAN}NetSecDragon ➜ {Style.RESET_ALL}").strip()
+                
+                if choice == '1':
+                    if not self.check_privileges():
+                        print(f"\n{Fore.RED}This module requires root privileges.{Style.RESET_ALL}")
+                        input(f"{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                        continue
+                    analyzer = FloodAnalyzer()
+                    analyzer.main_menu()
+                    
+                elif choice == '2':
+                    if not self.check_privileges():
+                        print(f"\n{Fore.RED}This module requires root privileges.{Style.RESET_ALL}")
+                        input(f"{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                        continue
+                    analyzer = PortScanAnalyzer()
+                    analyzer.main_menu()
+                    
+                elif choice == '3':
+                    if not self.check_privileges():
+                        print(f"\n{Fore.RED}This module requires root privileges.{Style.RESET_ALL}")
+                        input(f"{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                        continue
+                    analyzer = ARPAnalyzer()
+                    analyzer.main_menu()
+                    
+                elif choice == '4':
+                    if not self.check_privileges():
+                        print(f"\n{Fore.RED}This module requires root privileges.{Style.RESET_ALL}")
+                        input(f"{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                        continue
+                    print(f"\n{Fore.GREEN}Launching NetSecDragon ANTI-DEAUTH...{Style.RESET_ALL}")
+                    analyzer = WirelessAnalyzer()
+                    analyzer.run_deauth_detector()
+                    
+                elif choice == '0':
+                    print(f"\n{Fore.GREEN}Thank you for using NetSecDragon Toolkit!{Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}Stay secure!{Style.RESET_ALL}\n")
+                    sys.exit(0)
+                    
+                else:
+                    print(f"{Fore.RED}Invalid option. Please try again.{Style.RESET_ALL}")
+                    time.sleep(1)
+                    
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}Exiting NetSecDragon Toolkit...{Style.RESET_ALL}")
+                sys.exit(0)
+            except Exception as e:
+                print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+                input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+
+
+# ============================================================================
+# MODULE 1: CYRETHIUM ANTI-FLOOD
+# ============================================================================
+
+class FloodAnalyzer:
+    def __init__(self):
+        self.traffic_history = {}
+        self.suspicious_activity = []
+        self.flood_thresholds = {
+            'connections_per_second': 100,  # More than 100 connections per second
+            'packets_per_second': 1000,    # More than 1000 packets per second
+            'bytes_per_second': 10485760,  # More than 10MB per second
+            'syn_flood_threshold': 50,     # More than 50 SYN-RECV sockets
+            'udp_flood_threshold': 200,    # More than 200 UDP packets per second
+            'icmp_flood_threshold': 100    # More than 100 ICMP packets per second
+        }
+        self.whitelisted_ips = set(['127.0.0.1', '::1'])
+        self.baseline_established = False
+        self.baseline_stats = {}
+
+        # Tor/Cyrethonion awareness
+        self.tor_ports = {9040, 9053, 9050, 9051}
+        self.tor_virtual_net = ipaddress.ip_network('10.192.0.0/10')
+        try:
+            self.tor_uid_name = 'debian-tor'
+            self.tor_uid = pwd.getpwnam(self.tor_uid_name).pw_uid
+        except Exception:
+            self.tor_uid = None
+
+        self.tor_aware = self.detect_cyrethonion()
+        if self.tor_aware:
+            print(f"{Fore.YELLOW}Tor-aware mode enabled: ignoring Tor proxy traffic and ports (9040/9053/9050/9051) and VirtualAddrNetwork 10.192.0.0/10{Style.RESET_ALL}")
+        
+    def clear_screen(self):
+        os.system('clear' if os.name == 'posix' else 'cls')
+        
+    def print_banner(self):
+        banner = f"""{Fore.CYAN}
+ _   _      _   ____            ____                              
+| \ | | ___| |_/ ___|  ___  ___|  _ \ _ __ __ _  __ _  ___  _ __  
+|  \| |/ _ \ __\___ \ / _ \/ __| | | | '__/ _` |/ _` |/ _ \| '_ \ 
+| |\  |  __/ |_ ___) |  __/ (__| |_| | | | (_| | (_| | (_) | | | |
+|_| \_|\___|\__|____/ \___|\___|____/|_|  \__,_|\__, |\___/|_| |_|
+                                                |___/             
+__________________________________________________________________
+       
+  NetSecDragon Network Security Tools | Developed by root0emir
+__________________________________________________________________
+
+                   {Fore.RED}NetSecDragon ANTI-FLOOD{Fore.CYAN}
+             DoS & Flood Attack Detection{Style.RESET_ALL}
+"""
+        print(banner)
+        
+    def get_network_statistics(self):
+        """Get detailed network statistics"""
+        stats = {
+            'timestamp': dt.now().isoformat(),
+            'interfaces': {},
+            'connections': {},
+            'system': {}
+        }
+        
+        try:
+            # Get interface statistics
+            net_io = psutil.net_io_counters(pernic=True)
+            for interface, io_stats in net_io.items():
+                stats['interfaces'][interface] = {
+                    'bytes_sent': io_stats.bytes_sent,
+                    'bytes_recv': io_stats.bytes_recv,
+                    'packets_sent': io_stats.packets_sent,
+                    'packets_recv': io_stats.packets_recv,
+                    'errin': io_stats.errin,
+                    'errout': io_stats.errout,
+                    'dropin': io_stats.dropin,
+                    'dropout': io_stats.dropout
+                }
+            
+            # Get connection statistics
+            connections = psutil.net_connections()
+            conn_stats = defaultdict(int)
+            ip_connections = defaultdict(int)
+            
+            for conn in connections:
+                # Ignore Tor daemon/proxy connections when Tor-aware
+                if self.tor_aware and self.is_tor_connection(conn):
+                    continue
+                if conn.raddr:
+                    remote_ip = conn.raddr.ip
+                    # Skip Tor virtual network addresses when Tor-aware
+                    if self.tor_aware:
+                        try:
+                            if ipaddress.ip_address(remote_ip) in self.tor_virtual_net:
+                                continue
+                        except ValueError:
+                            pass
+                    if remote_ip not in self.whitelisted_ips:
+                        ip_connections[remote_ip] += 1
+                        conn_stats[f"{conn.status}_{conn.type}"] += 1
+                        
+            stats['connections'] = dict(conn_stats)
+            stats['ip_connections'] = dict(ip_connections)
+            
+            # Get system load
+            stats['system'] = {
+                'cpu_percent': psutil.cpu_percent(),
+                'memory_percent': psutil.virtual_memory().percent,
+                'load_average': os.getloadavg() if hasattr(os, 'getloadavg') else [0, 0, 0]
+            }
+            
+        except Exception as e:
+            print(f"{Fore.RED}Error getting network statistics: {e}{Style.RESET_ALL}")
+            
+        return stats
+        
+    def get_packet_statistics(self):
+        """Get packet-level statistics using netstat/ss"""
+        packet_stats = {
+            'tcp_stats': {},
+            'udp_stats': {},
+            'icmp_stats': {}
+        }
+        
+        try:
+            if os.name == 'posix':
+                # Get TCP statistics
+                result = subprocess.run(['cat', '/proc/net/snmp'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    packet_stats.update(self.parse_snmp_stats(result.stdout))
+                    
+                # Get detailed connection states
+                result = subprocess.run(['ss', '-s'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    packet_stats.update(self.parse_ss_summary(result.stdout))
+
+                # Count half-open connections (SYN-RECV) accurately
+                result = subprocess.run(['ss', '-tan', 'state', 'syn-recv'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    syn_recv_count = 0
+                    for line in result.stdout.splitlines():
+                        line = line.strip()
+                        if not line or line.startswith('State'):
+                            continue
+                        if line.startswith('SYN-RECV'):
+                            tokens = line.split()
+                            lport = None
+                            if len(tokens) >= 5:
+                                local = tokens[3]
+                                try:
+                                    lport = int(local.rsplit(':', 1)[1])
+                                except Exception:
+                                    lport = None
+                            # Ignore Tor proxy endpoints when Tor-aware
+                            if self.tor_aware and lport in self.tor_ports:
+                                continue
+                            syn_recv_count += 1
+                    packet_stats['tcp_syn_recv'] = syn_recv_count
+                    
+        except Exception as e:
+            print(f"{Fore.YELLOW}Warning: Could not get packet statistics: {e}{Style.RESET_ALL}")
+            
+        return packet_stats
+        
+    def parse_snmp_stats(self, snmp_output):
+        """Parse /proc/net/snmp for detailed protocol statistics"""
+        stats = {}
+        lines = snmp_output.strip().split('\n')
+        
+        for i in range(0, len(lines), 2):
+            if i + 1 < len(lines):
+                header = lines[i].split()
+                values = lines[i + 1].split()
+                
+                if header[0].endswith(':'):
+                    protocol = header[0][:-1].lower()
+                    if len(header) == len(values):
+                        protocol_stats = {}
+                        for j in range(1, len(header)):
+                            try:
+                                protocol_stats[header[j]] = int(values[j])
+                            except ValueError:
+                                protocol_stats[header[j]] = values[j]
+                        stats[protocol] = protocol_stats
+                        
+        return stats
+        
+    def parse_ss_summary(self, ss_output):
+        """Parse ss -s summary output"""
+        stats = {}
+        
+        for line in ss_output.split('\n'):
+            line = line.strip()
+            if 'TCP:' in line:
+                # Parse TCP connection counts
+                tcp_match = re.search(r'(\d+) established', line)
+                if tcp_match:
+                    stats['tcp_established'] = int(tcp_match.group(1))
+                    
+            elif 'UDP:' in line:
+                # Parse UDP socket counts
+                udp_match = re.search(r'(\d+) (?:sockets|ports)', line)
+                if udp_match:
+                    stats['udp_sockets'] = int(udp_match.group(1))
+                    
+        return stats
+        
+    def detect_cyrethonion(self):
+        """Detect if Cyrethonion/Tor transparent proxying is active"""
+        if os.name != 'posix':
+            return False
+        try:
+            # Presence of Cyrethonion status file
+            if os.path.exists('/var/lib/cyrethonion/started'):
+                return True
+            # Fallback: look for iptables REDIRECT to Tor TransPort (9040)
+            res = subprocess.run(['iptables-save'], capture_output=True, text=True, timeout=3)
+            if res.returncode == 0 and re.search(r'REDIRECT.*(to-ports|redir-port)[ =:]?9040', res.stdout):
+                return True
+        except Exception:
+            pass
+        return False
+
+    def is_tor_connection(self, conn):
+        """Return True if the connection belongs to Tor or to Tor proxy endpoints"""
+        try:
+            # Check owning process UID/name
+            if conn.pid:
+                try:
+                    p = psutil.Process(conn.pid)
+                    if self.tor_uid is not None:
+                        try:
+                            uids = p.uids()
+                            if uids.effective == self.tor_uid or uids.real == self.tor_uid:
+                                return True
+                        except Exception:
+                            pass
+                    try:
+                        if 'tor' in (p.name() or '').lower():
+                            return True
+                    except Exception:
+                        pass
+                except psutil.Error:
+                    pass
+
+            # Check local/remote endpoints for Tor proxy/control/DNS ports
+            if conn.laddr:
+                try:
+                    lip = getattr(conn.laddr, 'ip', None)
+                    lport = getattr(conn.laddr, 'port', None)
+                    if lip in ('127.0.0.1', '::1') and lport in self.tor_ports:
+                        return True
+                except Exception:
+                    pass
+            if conn.raddr:
+                try:
+                    rip = getattr(conn.raddr, 'ip', None)
+                    rport = getattr(conn.raddr, 'port', None)
+                    if rip in ('127.0.0.1', '::1') and rport in self.tor_ports:
+                        return True
+                    # Skip Tor virtual network 10.192.0.0/10
+                    if rip:
+                        try:
+                            if ipaddress.ip_address(rip) in self.tor_virtual_net:
+                                return True
+                        except ValueError:
+                            pass
+                except Exception:
+                    pass
+        except Exception:
+            return False
+        return False
+
+    def calculate_traffic_rates(self, current_stats, previous_stats):
+        """Calculate traffic rates between two measurements"""
+        if not previous_stats:
+            return {}
+            
+        rates = {}
+        time_diff = (dt.fromisoformat(current_stats['timestamp']) - 
+                    dt.fromisoformat(previous_stats['timestamp'])).total_seconds()
+        
+        if time_diff <= 0:
+            return {}
+            
+        # Calculate interface rates
+        rates['interfaces'] = {}
+        for interface in current_stats['interfaces']:
+            if interface in previous_stats['interfaces']:
+                curr = current_stats['interfaces'][interface]
+                prev = previous_stats['interfaces'][interface]
+                
+                rates['interfaces'][interface] = {
+                    'bytes_sent_rate': (curr['bytes_sent'] - prev['bytes_sent']) / time_diff,
+                    'bytes_recv_rate': (curr['bytes_recv'] - prev['bytes_recv']) / time_diff,
+                    'packets_sent_rate': (curr['packets_sent'] - prev['packets_sent']) / time_diff,
+                    'packets_recv_rate': (curr['packets_recv'] - prev['packets_recv']) / time_diff
+                }
+                
+        return rates
+        
+    def analyze_flood_patterns(self, current_stats, rates):
+        """Analyze network statistics for flood attack patterns"""
+        suspicious = []
+        current_time = dt.now()
+        
+        # Analyze connection floods
+        if 'ip_connections' in current_stats:
+            for ip, conn_count in current_stats['ip_connections'].items():
+                if conn_count > self.flood_thresholds['connections_per_second']:
+                    suspicious.append({
+                        'type': 'CONNECTION_FLOOD',
+                        'severity': 'HIGH',
+                        'details': f"IP {ip} has {conn_count} simultaneous connections",
+                        'source_ip': ip,
+                        'connection_count': conn_count,
+                        'timestamp': current_time.isoformat()
+                    })
+        
+        # Analyze traffic rates for floods
+        if rates and 'interfaces' in rates:
+            for interface, interface_rates in rates['interfaces'].items():
+                # Check for high packet rates (potential packet flood)
+                total_packets_rate = interface_rates['packets_recv_rate']
+                if total_packets_rate > self.flood_thresholds['packets_per_second']:
+                    suspicious.append({
+                        'type': 'PACKET_FLOOD',
+                        'severity': 'HIGH',
+                        'details': f"Interface {interface}: {total_packets_rate:.1f} packets/sec (threshold: {self.flood_thresholds['packets_per_second']})",
+                        'interface': interface,
+                        'packet_rate': total_packets_rate,
+                        'timestamp': current_time.isoformat()
+                    })
+                
+                # Check for high bandwidth usage (potential bandwidth flood)
+                total_bytes_rate = interface_rates['bytes_recv_rate']
+                if total_bytes_rate > self.flood_thresholds['bytes_per_second']:
+                    suspicious.append({
+                        'type': 'BANDWIDTH_FLOOD',
+                        'severity': 'HIGH',
+                        'details': f"Interface {interface}: {total_bytes_rate/1048576:.1f} MB/sec (threshold: {self.flood_thresholds['bytes_per_second']/1048576:.1f} MB/sec)",
+                        'interface': interface,
+                        'bandwidth_rate': total_bytes_rate,
+                        'timestamp': current_time.isoformat()
+                    })
+        
+        # Analyze system load impact
+        if 'system' in current_stats:
+            system = current_stats['system']
+            if system['cpu_percent'] > 90:
+                suspicious.append({
+                    'type': 'HIGH_CPU_LOAD',
+                    'severity': 'MEDIUM',
+                    'details': f"High CPU usage: {system['cpu_percent']:.1f}% (possible flood impact)",
+                    'cpu_percent': system['cpu_percent'],
+                    'timestamp': current_time.isoformat()
+                })
+                
+            if system['memory_percent'] > 90:
+                suspicious.append({
+                    'type': 'HIGH_MEMORY_USAGE',
+                    'severity': 'MEDIUM',
+                    'details': f"High memory usage: {system['memory_percent']:.1f}% (possible flood impact)",
+                    'memory_percent': system['memory_percent'],
+                    'timestamp': current_time.isoformat()
+                })
+        
+        return suspicious
+        
+    def detect_syn_flood(self, packet_stats):
+        """Detect SYN flood attacks using SYN-RECV backlog instead of total TCP segments"""
+        suspicious = []
+        
+        syn_recv = packet_stats.get('tcp_syn_recv', 0)
+        if syn_recv > self.flood_thresholds['syn_flood_threshold']:
+            suspicious.append({
+                'type': 'SYN_FLOOD',
+                'severity': 'HIGH',
+                'details': f"High number of half-open connections (SYN-RECV): {syn_recv} (threshold: {self.flood_thresholds['syn_flood_threshold']})",
+                'syn_recv': syn_recv,
+                'timestamp': dt.now().isoformat()
+            })
+        
+        return suspicious
+        
+    def display_network_stats(self, stats, rates=None):
+        """Display current network statistics"""
+        print(f"\n{Fore.GREEN}Network Statistics:{Style.RESET_ALL}")
+        print("-" * 80)
+        
+        # Display interface statistics
+        if 'interfaces' in stats:
+            print(f"\n{Fore.CYAN}Interface Statistics:{Style.RESET_ALL}")
+            for interface, if_stats in stats['interfaces'].items():
+                print(f"{Fore.YELLOW}{interface}:{Style.RESET_ALL}")
+                print(f"  Bytes: {if_stats['bytes_recv']:,} in, {if_stats['bytes_sent']:,} out")
+                print(f"  Packets: {if_stats['packets_recv']:,} in, {if_stats['packets_sent']:,} out")
+                print(f"  Errors: {if_stats['errin']} in, {if_stats['errout']} out")
+                print(f"  Drops: {if_stats['dropin']} in, {if_stats['dropout']} out")
+                
+                if rates and 'interfaces' in rates and interface in rates['interfaces']:
+                    if_rates = rates['interfaces'][interface]
+                    print(f"  {Fore.GREEN}Rates:{Style.RESET_ALL}")
+                    print(f"    {if_rates['bytes_recv_rate']/1024:.1f} KB/s in, {if_rates['bytes_sent_rate']/1024:.1f} KB/s out")
+                    print(f"    {if_rates['packets_recv_rate']:.1f} pkt/s in, {if_rates['packets_sent_rate']:.1f} pkt/s out")
+                print()
+        
+        # Display connection statistics
+        if 'connections' in stats and stats['connections']:
+            print(f"{Fore.CYAN}Connection Statistics:{Style.RESET_ALL}")
+            for conn_type, count in sorted(stats['connections'].items()):
+                print(f"  {conn_type}: {count}")
+        
+        # Display top connecting IPs
+        if 'ip_connections' in stats and stats['ip_connections']:
+            print(f"\n{Fore.CYAN}Top Connecting IPs:{Style.RESET_ALL}")
+            sorted_ips = sorted(stats['ip_connections'].items(), key=lambda x: x[1], reverse=True)
+            for ip, count in sorted_ips[:10]:  # Show top 10
+                color = Fore.RED if count > 50 else Fore.YELLOW if count > 20 else Fore.WHITE
+                print(f"  {color}{ip}: {count} connections{Style.RESET_ALL}")
+        
+        # Display system statistics
+        if 'system' in stats:
+            system = stats['system']
+            print(f"\n{Fore.CYAN}System Load:{Style.RESET_ALL}")
+            cpu_color = Fore.RED if system['cpu_percent'] > 80 else Fore.YELLOW if system['cpu_percent'] > 60 else Fore.GREEN
+            mem_color = Fore.RED if system['memory_percent'] > 80 else Fore.YELLOW if system['memory_percent'] > 60 else Fore.GREEN
+            print(f"  CPU: {cpu_color}{system['cpu_percent']:.1f}%{Style.RESET_ALL}")
+            print(f"  Memory: {mem_color}{system['memory_percent']:.1f}%{Style.RESET_ALL}")
+            if system['load_average'][0] > 0:
+                print(f"  Load Average: {system['load_average'][0]:.2f}, {system['load_average'][1]:.2f}, {system['load_average'][2]:.2f}")
+                
+    def display_suspicious_activity(self):
+        """Display detected suspicious activity"""
+        if not self.suspicious_activity:
+            print(f"\n{Fore.GREEN}✓ No suspicious flood activity detected{Style.RESET_ALL}")
+            return
+            
+        print(f"\n{Fore.RED}⚠ SUSPICIOUS FLOOD ACTIVITY DETECTED:{Style.RESET_ALL}")
+        print("-" * 80)
+        
+        for activity in self.suspicious_activity[-10:]:  # Show last 10
+            severity_color = Fore.RED if activity['severity'] == 'HIGH' else Fore.YELLOW
+            print(f"{severity_color}[{activity['severity']}] {activity['type']}: {activity['details']}{Style.RESET_ALL}")
+            if 'source_ip' in activity:
+                print(f"  Source IP: {activity['source_ip']}")
+            if 'interface' in activity:
+                print(f"  Interface: {activity['interface']}")
+            print(f"  Timestamp: {activity['timestamp']}")
+            print()
+            
+    def continuous_monitoring(self, interval=5):
+        """Start continuous monitoring"""
+        print(f"\n{Fore.GREEN}Starting continuous flood monitoring (interval: {interval}s)...{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Press Ctrl+C to stop{Style.RESET_ALL}\n")
+        
+        previous_stats = None
+        
+        try:
+            scan_count = 0
+            while True:
+                scan_count += 1
+                print(f"\n{Fore.CYAN}--- Scan #{scan_count} at {dt.now().strftime('%H:%M:%S')} ---{Style.RESET_ALL}")
+                
+                current_stats = self.get_network_statistics()
+                packet_stats = self.get_packet_statistics()
+                
+                rates = self.calculate_traffic_rates(current_stats, previous_stats)
+                
+                suspicious = self.analyze_flood_patterns(current_stats, rates)
+                syn_floods = self.detect_syn_flood(packet_stats)
+                suspicious.extend(syn_floods)
+                
+                self.suspicious_activity.extend(suspicious)
+                
+                if suspicious:
+                    print(f"{Fore.RED}! {len(suspicious)} suspicious flood activities detected!{Style.RESET_ALL}")
+                    for activity in suspicious:
+                        print(f"  {activity['type']}: {activity['details']}")
+                else:
+                    print(f"{Fore.GREEN}✓ No suspicious flood activity in this scan{Style.RESET_ALL}")
+                
+                # Show brief stats
+                if rates and 'interfaces' in rates:
+                    total_pkt_rate = sum(if_rates.get('packets_recv_rate', 0) for if_rates in rates['interfaces'].values())
+                    total_bw_rate = sum(if_rates.get('bytes_recv_rate', 0) for if_rates in rates['interfaces'].values())
+                    print(f"  Total traffic: {total_pkt_rate:.1f} pkt/s, {total_bw_rate/1024:.1f} KB/s")
+                
+                previous_stats = current_stats
+                time.sleep(interval)
+                
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Monitoring stopped by user{Style.RESET_ALL}")
+            
+    def save_report(self, filename=None):
+        """Save analysis report to file"""
+        if not filename:
+            filename = f"antiflood_report_{dt.now().strftime('%Y%m%d_%H%M%S')}.json"
+            
+        report = {
+            'timestamp': dt.now().isoformat(),
+            'suspicious_activity': self.suspicious_activity,
+            'flood_thresholds': self.flood_thresholds,
+            'baseline_stats': self.baseline_stats
+        }
+        
+        try:
+            with open(filename, 'w') as f:
+                json.dump(report, f, indent=2)
+            print(f"{Fore.GREEN}Report saved to: {filename}{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error saving report: {e}{Style.RESET_ALL}")
+            
+    def configure_thresholds(self):
+        """Configure detection thresholds"""
+        print(f"\n{Fore.CYAN}Current Flood Detection Thresholds:{Style.RESET_ALL}")
+        for key, value in self.flood_thresholds.items():
+            print(f"{key}: {value}")
+        
+        try:
+            print(f"\n{Fore.YELLOW}Enter new values (press Enter to keep current):{Style.RESET_ALL}")
+            
+            new_conn = input(f"Connections per second (current: {self.flood_thresholds['connections_per_second']}): ")
+            if new_conn:
+                self.flood_thresholds['connections_per_second'] = int(new_conn)
+                
+            new_pkt = input(f"Packets per second (current: {self.flood_thresholds['packets_per_second']}): ")
+            if new_pkt:
+                self.flood_thresholds['packets_per_second'] = int(new_pkt)
+                
+            new_bw = input(f"Bytes per second (current: {self.flood_thresholds['bytes_per_second']}): ")
+            if new_bw:
+                self.flood_thresholds['bytes_per_second'] = int(new_bw)
+                
+            new_syn = input(f"SYN flood threshold (current: {self.flood_thresholds['syn_flood_threshold']}): ")
+            if new_syn:
+                self.flood_thresholds['syn_flood_threshold'] = int(new_syn)
+                
+            print(f"{Fore.GREEN}Thresholds updated successfully{Style.RESET_ALL}")
+        except ValueError:
+            print(f"{Fore.RED}Invalid input. Thresholds not changed.{Style.RESET_ALL}")
+            
+    def establish_baseline(self):
+        """Establish baseline network statistics"""
+        print(f"{Fore.YELLOW}Establishing baseline network statistics...{Style.RESET_ALL}")
+        
+        samples = []
+        for i in range(5):
+            print(f"Collecting sample {i+1}/5...")
+            stats = self.get_network_statistics()
+            samples.append(stats)
+            if i < 4:  # Don't sleep after last sample
+                time.sleep(2)
+        
+        # Calculate averages
+        self.baseline_stats = {
+            'timestamp': dt.now().isoformat(),
+            'avg_connections': {},
+            'avg_system_load': {}
+        }
+        
+        # Average connection counts
+        if samples:
+            total_connections = defaultdict(int)
+            for sample in samples:
+                for conn_type, count in sample.get('connections', {}).items():
+                    total_connections[conn_type] += count
+            
+            for conn_type, total in total_connections.items():
+                self.baseline_stats['avg_connections'][conn_type] = total / len(samples)
+        
+        self.baseline_established = True
+        print(f"{Fore.GREEN}Baseline established successfully{Style.RESET_ALL}")
+        
+    def main_menu(self):
+        """Main menu interface"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            menu_options = f"""
+{Fore.GREEN}1.{Style.RESET_ALL} Single Network Analysis
+{Fore.GREEN}2.{Style.RESET_ALL} Continuous Monitoring
+{Fore.GREEN}3.{Style.RESET_ALL} View Current Statistics
+{Fore.GREEN}4.{Style.RESET_ALL} View Suspicious Activity
+{Fore.GREEN}5.{Style.RESET_ALL} Establish Baseline
+{Fore.GREEN}6.{Style.RESET_ALL} Configure Thresholds
+{Fore.GREEN}7.{Style.RESET_ALL} Save Report
+{Fore.GREEN}8.{Style.RESET_ALL} Clear Activity Log
+{Fore.GREEN}0.{Style.RESET_ALL} Exit
+"""
+            print(menu_options)
+            
+            try:
+                choice = input(f"{Fore.CYAN}Select option: {Style.RESET_ALL}")
+                
+                if choice == '1':
+                    print(f"\n{Fore.YELLOW}Performing network flood analysis...{Style.RESET_ALL}")
+                    
+                    # Take two measurements to calculate rates
+                    stats1 = self.get_network_statistics()
+                    time.sleep(2)
+                    stats2 = self.get_network_statistics()
+                    packet_stats = self.get_packet_statistics()
+                    
+                    rates = self.calculate_traffic_rates(stats2, stats1)
+                    
+                    suspicious = self.analyze_flood_patterns(stats2, rates)
+                    syn_floods = self.detect_syn_flood(packet_stats)
+                    suspicious.extend(syn_floods)
+                    
+                    self.suspicious_activity.extend(suspicious)
+                    
+                    self.display_network_stats(stats2, rates)
+                    
+                    if suspicious:
+                        print(f"\n{Fore.RED}! {len(suspicious)} suspicious flood activities detected!{Style.RESET_ALL}")
+                    else:
+                        print(f"\n{Fore.GREEN}✓ No suspicious flood activity detected{Style.RESET_ALL}")
+                        
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '2':
+                    interval = input(f"{Fore.CYAN}Enter monitoring interval in seconds (default 5): {Style.RESET_ALL}")
+                    try:
+                        interval = int(interval) if interval else 5
+                    except ValueError:
+                        interval = 5
+                    self.continuous_monitoring(interval)
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '3':
+                    stats = self.get_network_statistics()
+                    self.display_network_stats(stats)
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '4':
+                    self.display_suspicious_activity()
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '5':
+                    self.establish_baseline()
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '6':
+                    self.configure_thresholds()
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '7':
+                    filename = input(f"{Fore.CYAN}Enter filename (press Enter for auto-generated): {Style.RESET_ALL}")
+                    self.save_report(filename if filename else None)
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '8':
+                    self.suspicious_activity.clear()
+                    print(f"{Fore.GREEN}Activity log cleared{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '0':
+                    print(f"{Fore.GREEN}Goodbye!{Style.RESET_ALL}")
+                    sys.exit(0)
+                    
+                else:
+                    print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                    time.sleep(1)
+                    
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}Exiting...{Style.RESET_ALL}")
+                sys.exit(0)
+            except Exception as e:
+                print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+                input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+
+# Individual module main() removed - now using unified toolkit
+
+# ============================================================================
+# MODULE 3: CYRETHIUM ANTI-MITM
+# ============================================================================
+
+class ARPAnalyzer:
+    def __init__(self):
+        self.arp_cache = {}
+        self.suspicious_activity = []
+        self.known_gateways = set()
+        self.vendor_db = {}
+        
+    def clear_screen(self):
+        os.system('clear' if os.name == 'posix' else 'cls')
+        
+    def print_banner(self):
+        banner = f"""{Fore.CYAN}
+ _   _      _   ____            ____                              
+| \ | | ___| |_/ ___|  ___  ___|  _ \ _ __ __ _  __ _  ___  _ __  
+|  \| |/ _ \ __\___ \ / _ \/ __| | | | '__/ _` |/ _` |/ _ \| '_ \ 
+| |\  |  __/ |_ ___) |  __/ (__| |_| | | | (_| | (_| | (_) | | | |
+|_| \_|\___|\__|____/ \___|\___|____/|_|  \__,_|\__, |\___/|_| |_|
+                                                |___/             
+__________________________________________________________________
+       
+  NetSecDragon Network Security Tools | Developed by root0emir
+__________________________________________________________________
+
+                    {Fore.RED}NetSecDragon ANTI-MITM{Fore.CYAN}
+                 ARP Analysis & MITM Detection{Style.RESET_ALL}
+"""
+        print(banner)
+        
+    def get_arp_table(self):
+        """Get current ARP table entries"""
+        try:
+            if os.name == 'posix':
+                result = subprocess.run(['arp', '-a'], capture_output=True, text=True)
+                return self.parse_arp_linux(result.stdout)
+            else:
+                result = subprocess.run(['arp', '-a'], capture_output=True, text=True, shell=True)
+                return self.parse_arp_windows(result.stdout)
+        except Exception as e:
+            print(f"{Fore.RED}Error getting ARP table: {e}{Style.RESET_ALL}")
+            return {}
+            
+    def parse_arp_linux(self, arp_output):
+        """Parse Linux ARP output"""
+        arp_entries = {}
+        for line in arp_output.split('\n'):
+            # Pattern: ? (192.168.1.1) at aa:bb:cc:dd:ee:ff [ether] on eth0
+            match = re.search(r'\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([0-9a-fA-F:]{17})', line)
+            if match:
+                ip, mac = match.groups()
+                arp_entries[ip] = {
+                    'mac': mac.lower(),
+                    'timestamp': dt.now().isoformat(),
+                    'interface': self.extract_interface(line)
+                }
+        return arp_entries
+        
+    def parse_arp_windows(self, arp_output):
+        """Parse Windows ARP output"""
+        arp_entries = {}
+        for line in arp_output.split('\n'):
+            # Pattern: 192.168.1.1           aa-bb-cc-dd-ee-ff     dynamic
+            parts = line.strip().split()
+            if len(parts) >= 3 and self.is_valid_ip(parts[0]):
+                ip = parts[0]
+                mac = parts[1].replace('-', ':').lower()
+                if self.is_valid_mac(mac):
+                    arp_entries[ip] = {
+                        'mac': mac,
+                        'timestamp': dt.now().isoformat(),
+                        'type': parts[2] if len(parts) > 2 else 'unknown'
+                    }
+        return arp_entries
+        
+    def extract_interface(self, line):
+        """Extract interface name from ARP line"""
+        match = re.search(r'on\s+(\w+)', line)
+        return match.group(1) if match else 'unknown'
+        
+    def is_valid_ip(self, ip):
+        """Validate IP address format"""
+        pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+        return bool(re.match(pattern, ip))
+        
+    def is_valid_mac(self, mac):
+        """Validate MAC address format"""
+        pattern = r'^([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})$'
+        return bool(re.match(pattern, mac))
+        
+    def detect_duplicates(self, current_arp):
+        """Detect duplicate MAC addresses (potential MITM)"""
+        mac_to_ips = defaultdict(list)
+        for ip, entry in current_arp.items():
+            mac_to_ips[entry['mac']].append(ip)
+            
+        duplicates = {mac: ips for mac, ips in mac_to_ips.items() if len(ips) > 1}
+        return duplicates
+        
+    def detect_mac_changes(self, current_arp):
+        """Detect MAC address changes for same IP"""
+        changes = []
+        for ip, entry in current_arp.items():
+            if ip in self.arp_cache:
+                old_mac = self.arp_cache[ip]['mac']
+                new_mac = entry['mac']
+                if old_mac != new_mac:
+                    changes.append({
+                        'ip': ip,
+                        'old_mac': old_mac,
+                        'new_mac': new_mac,
+                        'timestamp': entry['timestamp']
+                    })
+        return changes
+        
+    def get_gateway_info(self):
+        """Get default gateway information"""
+        try:
+            if os.name == 'posix':
+                result = subprocess.run(['ip', 'route'], capture_output=True, text=True)
+                for line in result.stdout.split('\n'):
+                    if 'default via' in line:
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            gateway_ip = parts[2]
+                            self.known_gateways.add(gateway_ip)
+                            return gateway_ip
+            else:
+                result = subprocess.run(['ipconfig'], capture_output=True, text=True, shell=True)
+                for line in result.stdout.split('\n'):
+                    if 'Default Gateway' in line:
+                        parts = line.split(':')
+                        if len(parts) > 1:
+                            gateway_ip = parts[1].strip()
+                            if self.is_valid_ip(gateway_ip):
+                                self.known_gateways.add(gateway_ip)
+                                return gateway_ip
+        except Exception as e:
+            print(f"{Fore.YELLOW}Warning: Could not detect gateway: {e}{Style.RESET_ALL}")
+        return None
+        
+    def analyze_suspicious_patterns(self, current_arp):
+        """Analyze for suspicious patterns"""
+        suspicious = []
+        
+        # Check for duplicate MACs
+        duplicates = self.detect_duplicates(current_arp)
+        for mac, ips in duplicates.items():
+            suspicious.append({
+                'type': 'DUPLICATE_MAC',
+                'severity': 'HIGH',
+                'details': f"MAC {mac} assigned to multiple IPs: {', '.join(ips)}",
+                'timestamp': dt.now().isoformat()
+            })
+            
+        # Check for MAC changes
+        changes = self.detect_mac_changes(current_arp)
+        for change in changes:
+            suspicious.append({
+                'type': 'MAC_CHANGE',
+                'severity': 'MEDIUM',
+                'details': f"IP {change['ip']} MAC changed from {change['old_mac']} to {change['new_mac']}",
+                'timestamp': change['timestamp']
+            })
+            
+        return suspicious
+        
+    def display_arp_table(self, arp_table):
+        """Display current ARP table"""
+        print(f"\n{Fore.GREEN}Current ARP Table:{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{'IP Address':<15} {'MAC Address':<18} {'Timestamp':<20} {'Status'}{Style.RESET_ALL}")
+        print("-" * 80)
+        
+        for ip, entry in sorted(arp_table.items()):
+            status = "GATEWAY" if ip in self.known_gateways else "NORMAL"
+            color = Fore.CYAN if status == "GATEWAY" else Fore.WHITE
+            print(f"{color}{ip:<15} {entry['mac']:<18} {entry['timestamp'][:19]:<20} {status}{Style.RESET_ALL}")
+            
+    def display_suspicious_activity(self):
+        """Display detected suspicious activity"""
+        if not self.suspicious_activity:
+            print(f"\n{Fore.GREEN}✓ No suspicious activity detected{Style.RESET_ALL}")
+            return
+            
+        print(f"\n{Fore.RED}⚠ SUSPICIOUS ACTIVITY DETECTED:{Style.RESET_ALL}")
+        print("-" * 80)
+        
+        for activity in self.suspicious_activity[-10:]:  # Show last 10
+            severity_color = Fore.RED if activity['severity'] == 'HIGH' else Fore.YELLOW
+            print(f"{severity_color}[{activity['severity']}] {activity['type']}: {activity['details']}{Style.RESET_ALL}")
+            print(f"  Timestamp: {activity['timestamp']}")
+            print()
+            
+    def continuous_monitoring(self, interval=5):
+        """Start continuous monitoring"""
+        print(f"\n{Fore.GREEN}Starting continuous monitoring (interval: {interval}s)...{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Press Ctrl+C to stop{Style.RESET_ALL}\n")
+        
+        try:
+            scan_count = 0
+            while True:
+                scan_count += 1
+                print(f"\n{Fore.CYAN}--- Scan #{scan_count} at {dt.now().strftime('%H:%M:%S')} ---{Style.RESET_ALL}")
+                
+                current_arp = self.get_arp_table()
+                if current_arp:
+                    suspicious = self.analyze_suspicious_patterns(current_arp)
+                    self.suspicious_activity.extend(suspicious)
+                    
+                    if suspicious:
+                        print(f"{Fore.RED}! {len(suspicious)} new suspicious activities detected!{Style.RESET_ALL}")
+                        for activity in suspicious:
+                            print(f"  {activity['type']}: {activity['details']}")
+                    else:
+                        print(f"{Fore.GREEN}✓ No suspicious activity in this scan{Style.RESET_ALL}")
+                    
+                    self.arp_cache = current_arp
+                    
+                time.sleep(interval)
+                
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Monitoring stopped by user{Style.RESET_ALL}")
+            
+    def save_report(self, filename=None):
+        """Save analysis report to file"""
+        if not filename:
+            filename = f"antimitm_report_{dt.now().strftime('%Y%m%d_%H%M%S')}.json"
+            
+        report = {
+            'timestamp': dt.now().isoformat(),
+            'arp_table': self.arp_cache,
+            'suspicious_activity': self.suspicious_activity,
+            'known_gateways': list(self.known_gateways)
+        }
+        
+        try:
+            with open(filename, 'w') as f:
+                json.dump(report, f, indent=2)
+            print(f"{Fore.GREEN}Report saved to: {filename}{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error saving report: {e}{Style.RESET_ALL}")
+            
+    def main_menu(self):
+        """Main menu interface"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            menu_options = f"""
+{Fore.GREEN}1.{Style.RESET_ALL} Single ARP Scan
+{Fore.GREEN}2.{Style.RESET_ALL} Continuous Monitoring
+{Fore.GREEN}3.{Style.RESET_ALL} View Current ARP Table
+{Fore.GREEN}4.{Style.RESET_ALL} View Suspicious Activity
+{Fore.GREEN}5.{Style.RESET_ALL} Save Report
+{Fore.GREEN}6.{Style.RESET_ALL} Clear Suspicious Activity Log
+{Fore.GREEN}0.{Style.RESET_ALL} Exit
+"""
+            print(menu_options)
+            
+            try:
+                choice = input(f"{Fore.CYAN}Select option: {Style.RESET_ALL}")
+                
+                if choice == '1':
+                    print(f"\n{Fore.YELLOW}Performing single ARP scan...{Style.RESET_ALL}")
+                    current_arp = self.get_arp_table()
+                    self.get_gateway_info()
+                    
+                    if current_arp:
+                        suspicious = self.analyze_suspicious_patterns(current_arp)
+                        self.suspicious_activity.extend(suspicious)
+                        self.arp_cache = current_arp
+                        
+                        self.display_arp_table(current_arp)
+                        
+                        if suspicious:
+                            print(f"\n{Fore.RED}! {len(suspicious)} suspicious activities detected!{Style.RESET_ALL}")
+                        else:
+                            print(f"\n{Fore.GREEN}✓ No suspicious activity detected{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}Failed to get ARP table{Style.RESET_ALL}")
+                        
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '2':
+                    interval = input(f"{Fore.CYAN}Enter monitoring interval in seconds (default 5): {Style.RESET_ALL}")
+                    try:
+                        interval = int(interval) if interval else 5
+                    except ValueError:
+                        interval = 5
+                    self.get_gateway_info()
+                    self.continuous_monitoring(interval)
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '3':
+                    if self.arp_cache:
+                        self.display_arp_table(self.arp_cache)
+                    else:
+                        print(f"{Fore.YELLOW}No ARP data available. Run a scan first.{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '4':
+                    self.display_suspicious_activity()
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '5':
+                    filename = input(f"{Fore.CYAN}Enter filename (press Enter for auto-generated): {Style.RESET_ALL}")
+                    self.save_report(filename if filename else None)
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '6':
+                    self.suspicious_activity.clear()
+                    print(f"{Fore.GREEN}Suspicious activity log cleared{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '0':
+                    print(f"{Fore.GREEN}Goodbye!{Style.RESET_ALL}")
+                    sys.exit(0)
+                    
+                else:
+                    print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                    time.sleep(1)
+                    
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}Exiting...{Style.RESET_ALL}")
+                sys.exit(0)
+            except Exception as e:
+                print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+                input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+
+# Individual module main() removed - now using unified toolkit
+
+# ============================================================================
+# MODULE 2: CYRETHIUM ANTI-SCAN
+# ============================================================================
+
+class PortScanAnalyzer:
+    def __init__(self):
+        self.connection_history = {}
+        self.suspicious_activity = []
+        self.scan_thresholds = {
+            'ports_per_minute': 50,  # More than 50 ports per minute is suspicious
+            'connections_per_second': 10,  # More than 10 connections per second
+            'failed_connections_threshold': 20  # More than 20 failed connections
+        }
+        self.whitelisted_ips = set(['127.0.0.1', '::1'])
+        
+    def clear_screen(self):
+        os.system('clear' if os.name == 'posix' else 'cls')
+        
+    def print_banner(self):
+        banner = f"""{Fore.CYAN}
+ _   _      _   ____            ____                              
+| \ | | ___| |_/ ___|  ___  ___|  _ \ _ __ __ _  __ _  ___  _ __  
+|  \| |/ _ \ __\___ \ / _ \/ __| | | | '__/ _` |/ _` |/ _ \| '_ \ 
+| |\  |  __/ |_ ___) |  __/ (__| |_| | | | (_| | (_| | (_) | | | |
+|_| \_|\___|\__|____/ \___|\___|____/|_|  \__,_|\__, |\___/|_| |_|
+                                                |___/             
+__________________________________________________________________
+       
+  NetSecDragon Network Security Tools | Developed by root0emir
+__________________________________________________________________
+
+                    {Fore.RED}NetSecDragon ANTI-SCAN{Fore.CYAN}
+              Port Scan Detection & Monitoring{Style.RESET_ALL}
+"""
+        print(banner)
+        
+    def get_network_connections(self):
+        """Get current network connections"""
+        connections = []
+        try:
+            if os.name == 'posix':
+                # Use ss command for better performance
+                result = subprocess.run(['ss', '-tuln'], capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    connections.extend(self.parse_ss_output(result.stdout))
+                
+                # Also get established connections
+                result = subprocess.run(['ss', '-tun'], capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    connections.extend(self.parse_ss_established(result.stdout))
+            else:
+                result = subprocess.run(['netstat', '-an'], capture_output=True, text=True, shell=True, timeout=10)
+                if result.returncode == 0:
+                    connections.extend(self.parse_netstat_output(result.stdout))
+                    
+        except Exception as e:
+            print(f"{Fore.RED}Error getting network connections: {e}{Style.RESET_ALL}")
+            
+        return connections
+        
+    def parse_ss_output(self, ss_output):
+        """Parse ss command output for listening ports"""
+        connections = []
+        for line in ss_output.split('\n')[1:]:  # Skip header
+            parts = line.split()
+            if len(parts) >= 5:
+                proto = parts[0]
+                state = parts[1]
+                local_addr = parts[4]
+                
+                if ':' in local_addr:
+                    try:
+                        if local_addr.startswith('['):
+                            # IPv6 format [::]:port
+                            ip, port = local_addr.rsplit(':', 1)
+                            ip = ip.strip('[]')
+                        else:
+                            ip, port = local_addr.rsplit(':', 1)
+                        
+                        connections.append({
+                            'protocol': proto,
+                            'state': state,
+                            'local_ip': ip,
+                            'local_port': int(port),
+                            'timestamp': dt.now().isoformat(),
+                            'type': 'listening'
+                        })
+                    except (ValueError, IndexError):
+                        continue
+                        
+        return connections
+        
+    def parse_ss_established(self, ss_output):
+        """Parse ss command output for established connections"""
+        connections = []
+        for line in ss_output.split('\n')[1:]:  # Skip header
+            parts = line.split()
+            if len(parts) >= 6:
+                proto = parts[0]
+                state = parts[1]
+                local_addr = parts[4]
+                remote_addr = parts[5]
+                
+                try:
+                    # Parse local address
+                    if local_addr.startswith('['):
+                        local_ip, local_port = local_addr.rsplit(':', 1)
+                        local_ip = local_ip.strip('[]')
+                    else:
+                        local_ip, local_port = local_addr.rsplit(':', 1)
+                    
+                    # Parse remote address
+                    if remote_addr.startswith('['):
+                        remote_ip, remote_port = remote_addr.rsplit(':', 1)
+                        remote_ip = remote_ip.strip('[]')
+                    else:
+                        remote_ip, remote_port = remote_addr.rsplit(':', 1)
+                    
+                    connections.append({
+                        'protocol': proto,
+                        'state': state,
+                        'local_ip': local_ip,
+                        'local_port': int(local_port),
+                        'remote_ip': remote_ip,
+                        'remote_port': int(remote_port),
+                        'timestamp': dt.now().isoformat(),
+                        'type': 'established'
+                    })
+                except (ValueError, IndexError):
+                    continue
+                    
+        return connections
+        
+    def parse_netstat_output(self, netstat_output):
+        """Parse netstat output for Windows"""
+        connections = []
+        for line in netstat_output.split('\n'):
+            if 'TCP' in line or 'UDP' in line:
+                parts = line.split()
+                if len(parts) >= 4:
+                    proto = parts[0]
+                    local_addr = parts[1]
+                    remote_addr = parts[2] if len(parts) > 2 else ''
+                    state = parts[3] if len(parts) > 3 else ''
+                    
+                    try:
+                        local_ip, local_port = local_addr.rsplit(':', 1)
+                        connection = {
+                            'protocol': proto,
+                            'state': state,
+                            'local_ip': local_ip,
+                            'local_port': int(local_port),
+                            'timestamp': dt.now().isoformat(),
+                            'type': 'listening' if state == 'LISTENING' else 'established'
+                        }
+                        
+                        if remote_addr and ':' in remote_addr:
+                            remote_ip, remote_port = remote_addr.rsplit(':', 1)
+                            connection['remote_ip'] = remote_ip
+                            connection['remote_port'] = int(remote_port)
+                            
+                        connections.append(connection)
+                    except (ValueError, IndexError):
+                        continue
+                        
+        return connections
+        
+    def analyze_port_scan_patterns(self, connections):
+        """Analyze connections for port scan patterns"""
+        suspicious = []
+        current_time = dt.now()
+        
+        # Group connections by remote IP
+        ip_connections = defaultdict(list)
+        for conn in connections:
+            if conn['type'] == 'established' and 'remote_ip' in conn:
+                remote_ip = conn['remote_ip']
+                if remote_ip not in self.whitelisted_ips:
+                    ip_connections[remote_ip].append(conn)
+        
+        # Analyze each IP's connection patterns
+        for remote_ip, conns in ip_connections.items():
+            if len(conns) > self.scan_thresholds['ports_per_minute']:
+                # Check if connections are to different ports (port scan indicator)
+                ports = set(conn['local_port'] for conn in conns)
+                if len(ports) > 10:  # Accessing many different ports
+                    suspicious.append({
+                        'type': 'PORT_SCAN',
+                        'severity': 'HIGH',
+                        'details': f"IP {remote_ip} accessed {len(ports)} different ports ({len(conns)} connections)",
+                        'remote_ip': remote_ip,
+                        'ports': sorted(list(ports)),
+                        'timestamp': current_time.isoformat()
+                    })
+        
+        # Check connection history for scanning patterns
+        self.update_connection_history(connections)
+        scanning_ips = self.detect_historical_scanning()
+        for ip_info in scanning_ips:
+            suspicious.append(ip_info)
+            
+        return suspicious
+        
+    def update_connection_history(self, connections):
+        """Update connection history for pattern analysis"""
+        current_time = dt.now()
+        
+        for conn in connections:
+            if conn['type'] == 'established' and 'remote_ip' in conn:
+                remote_ip = conn['remote_ip']
+                if remote_ip not in self.whitelisted_ips:
+                    if remote_ip not in self.connection_history:
+                        self.connection_history[remote_ip] = {
+                            'ports': set(),
+                            'first_seen': current_time,
+                            'last_seen': current_time,
+                            'connection_count': 0
+                        }
+                    
+                    history = self.connection_history[remote_ip]
+                    history['ports'].add(conn['local_port'])
+                    history['last_seen'] = current_time
+                    history['connection_count'] += 1
+        
+        # Clean old history (older than 1 hour)
+        cutoff_time = current_time - timedelta(hours=1)
+        to_remove = [ip for ip, data in self.connection_history.items() 
+                    if data['last_seen'] < cutoff_time]
+        for ip in to_remove:
+            del self.connection_history[ip]
+            
+    def detect_historical_scanning(self):
+        """Detect scanning patterns from historical data"""
+        suspicious = []
+        current_time = dt.now()
+        
+        for remote_ip, history in self.connection_history.items():
+            time_window = (current_time - history['first_seen']).total_seconds() / 60  # minutes
+            
+            # Check for stealth scan (slow but many ports)
+            if len(history['ports']) > 20 and time_window > 5:  # 20+ ports over 5+ minutes
+                suspicious.append({
+                    'type': 'STEALTH_SCAN',
+                    'severity': 'MEDIUM',
+                    'details': f"IP {remote_ip} slowly scanned {len(history['ports'])} ports over {time_window:.1f} minutes",
+                    'remote_ip': remote_ip,
+                    'ports': sorted(list(history['ports'])),
+                    'duration_minutes': time_window,
+                    'timestamp': current_time.isoformat()
+                })
+                
+            # Check for aggressive scan (many connections quickly)
+            elif history['connection_count'] > 100 and time_window < 2:  # 100+ connections in <2 minutes
+                suspicious.append({
+                    'type': 'AGGRESSIVE_SCAN',
+                    'severity': 'HIGH',
+                    'details': f"IP {remote_ip} made {history['connection_count']} connections to {len(history['ports'])} ports in {time_window:.1f} minutes",
+                    'remote_ip': remote_ip,
+                    'ports': sorted(list(history['ports'])),
+                    'timestamp': current_time.isoformat()
+                })
+        
+        return suspicious
+        
+    def check_common_scan_ports(self, connections):
+        """Check for scans targeting common vulnerable ports"""
+        vulnerable_ports = {
+            21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
+            80: 'HTTP', 110: 'POP3', 135: 'RPC', 139: 'NetBIOS', 143: 'IMAP',
+            443: 'HTTPS', 445: 'SMB', 993: 'IMAPS', 995: 'POP3S', 1433: 'MSSQL',
+            3306: 'MySQL', 3389: 'RDP', 5432: 'PostgreSQL', 5900: 'VNC'
+        }
+        
+        suspicious = []
+        port_access = defaultdict(set)  # port -> set of IPs
+        
+        for conn in connections:
+            if conn['type'] == 'established' and 'remote_ip' in conn:
+                port = conn['local_port']
+                remote_ip = conn['remote_ip']
+                if port in vulnerable_ports and remote_ip not in self.whitelisted_ips:
+                    port_access[port].add(remote_ip)
+        
+        # Check for multiple IPs scanning same vulnerable port
+        for port, ips in port_access.items():
+            if len(ips) > 3:  # More than 3 different IPs accessing same vulnerable port
+                suspicious.append({
+                    'type': 'VULNERABLE_PORT_SCAN',
+                    'severity': 'HIGH',
+                    'details': f"Port {port} ({vulnerable_ports[port]}) accessed by {len(ips)} different IPs",
+                    'port': port,
+                    'service': vulnerable_ports[port],
+                    'scanning_ips': list(ips),
+                    'timestamp': dt.now().isoformat()
+                })
+        
+        return suspicious
+        
+    def display_connections(self, connections):
+        """Display current network connections"""
+        print(f"\n{Fore.GREEN}Current Network Connections:{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{'Protocol':<8} {'State':<12} {'Local Address':<22} {'Remote Address':<22} {'Type'}{Style.RESET_ALL}")
+        print("-" * 90)
+        
+        # Group by type for better display
+        listening = [c for c in connections if c['type'] == 'listening']
+        established = [c for c in connections if c['type'] == 'established']
+        
+        print(f"\n{Fore.CYAN}Listening Ports:{Style.RESET_ALL}")
+        for conn in listening[:20]:  # Show first 20
+            local_addr = f"{conn['local_ip']}:{conn['local_port']}"
+            print(f"{Fore.WHITE}{conn['protocol']:<8} {conn['state']:<12} {local_addr:<22} {'N/A':<22} {conn['type']}{Style.RESET_ALL}")
+        
+        if established:
+            print(f"\n{Fore.CYAN}Established Connections:{Style.RESET_ALL}")
+            for conn in established[:20]:  # Show first 20
+                local_addr = f"{conn['local_ip']}:{conn['local_port']}"
+                remote_addr = f"{conn.get('remote_ip', 'N/A')}:{conn.get('remote_port', 'N/A')}"
+                print(f"{Fore.WHITE}{conn['protocol']:<8} {conn['state']:<12} {local_addr:<22} {remote_addr:<22} {conn['type']}{Style.RESET_ALL}")
+                
+    def display_suspicious_activity(self):
+        """Display detected suspicious activity"""
+        if not self.suspicious_activity:
+            print(f"\n{Fore.GREEN}✓ No suspicious scanning activity detected{Style.RESET_ALL}")
+            return
+            
+        print(f"\n{Fore.RED}⚠ SUSPICIOUS SCANNING ACTIVITY DETECTED:{Style.RESET_ALL}")
+        print("-" * 80)
+        
+        for activity in self.suspicious_activity[-10:]:  # Show last 10
+            severity_color = Fore.RED if activity['severity'] == 'HIGH' else Fore.YELLOW
+            print(f"{severity_color}[{activity['severity']}] {activity['type']}: {activity['details']}{Style.RESET_ALL}")
+            if 'remote_ip' in activity:
+                print(f"  Source IP: {activity['remote_ip']}")
+            if 'ports' in activity and len(activity['ports']) <= 20:
+                print(f"  Ports: {', '.join(map(str, activity['ports']))}")
+            elif 'ports' in activity:
+                print(f"  Ports: {len(activity['ports'])} ports (showing first 10: {', '.join(map(str, activity['ports'][:10]))}...)")
+            print(f"  Timestamp: {activity['timestamp']}")
+            print()
+            
+    def continuous_monitoring(self, interval=5):
+        """Start continuous monitoring"""
+        print(f"\n{Fore.GREEN}Starting continuous port scan monitoring (interval: {interval}s)...{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Press Ctrl+C to stop{Style.RESET_ALL}\n")
+        
+        try:
+            scan_count = 0
+            while True:
+                scan_count += 1
+                print(f"\n{Fore.CYAN}--- Scan #{scan_count} at {dt.now().strftime('%H:%M:%S')} ---{Style.RESET_ALL}")
+                
+                connections = self.get_network_connections()
+                if connections:
+                    suspicious = self.analyze_port_scan_patterns(connections)
+                    vulnerable_scans = self.check_common_scan_ports(connections)
+                    suspicious.extend(vulnerable_scans)
+                    
+                    self.suspicious_activity.extend(suspicious)
+                    
+                    if suspicious:
+                        print(f"{Fore.RED}! {len(suspicious)} suspicious scanning activities detected!{Style.RESET_ALL}")
+                        for activity in suspicious:
+                            print(f"  {activity['type']}: {activity['details']}")
+                    else:
+                        print(f"{Fore.GREEN}✓ No suspicious scanning activity in this scan{Style.RESET_ALL}")
+                        
+                time.sleep(interval)
+                
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Monitoring stopped by user{Style.RESET_ALL}")
+            
+    def save_report(self, filename=None):
+        """Save analysis report to file"""
+        if not filename:
+            filename = f"antiscan_report_{dt.now().strftime('%Y%m%d_%H%M%S')}.json"
+            
+        report = {
+            'timestamp': dt.now().isoformat(),
+            'connection_history': {ip: {
+                'ports': list(data['ports']),
+                'first_seen': data['first_seen'].isoformat(),
+                'last_seen': data['last_seen'].isoformat(),
+                'connection_count': data['connection_count']
+            } for ip, data in self.connection_history.items()},
+            'suspicious_activity': self.suspicious_activity,
+            'scan_thresholds': self.scan_thresholds
+        }
+        
+        try:
+            with open(filename, 'w') as f:
+                json.dump(report, f, indent=2)
+            print(f"{Fore.GREEN}Report saved to: {filename}{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error saving report: {e}{Style.RESET_ALL}")
+            
+    def configure_thresholds(self):
+        """Configure detection thresholds"""
+        print(f"\n{Fore.CYAN}Current Detection Thresholds:{Style.RESET_ALL}")
+        print(f"Ports per minute: {self.scan_thresholds['ports_per_minute']}")
+        print(f"Connections per second: {self.scan_thresholds['connections_per_second']}")
+        print(f"Failed connections threshold: {self.scan_thresholds['failed_connections_threshold']}")
+        
+        try:
+            new_ports = input(f"\nEnter new ports per minute threshold (current: {self.scan_thresholds['ports_per_minute']}): ")
+            if new_ports:
+                self.scan_thresholds['ports_per_minute'] = int(new_ports)
+                
+            new_conn = input(f"Enter new connections per second threshold (current: {self.scan_thresholds['connections_per_second']}): ")
+            if new_conn:
+                self.scan_thresholds['connections_per_second'] = int(new_conn)
+                
+            new_failed = input(f"Enter new failed connections threshold (current: {self.scan_thresholds['failed_connections_threshold']}): ")
+            if new_failed:
+                self.scan_thresholds['failed_connections_threshold'] = int(new_failed)
+                
+            print(f"{Fore.GREEN}Thresholds updated successfully{Style.RESET_ALL}")
+        except ValueError:
+            print(f"{Fore.RED}Invalid input. Thresholds not changed.{Style.RESET_ALL}")
+            
+    def main_menu(self):
+        """Main menu interface"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            menu_options = f"""
+{Fore.GREEN}1.{Style.RESET_ALL} Single Network Scan
+{Fore.GREEN}2.{Style.RESET_ALL} Continuous Monitoring
+{Fore.GREEN}3.{Style.RESET_ALL} View Current Connections
+{Fore.GREEN}4.{Style.RESET_ALL} View Suspicious Activity
+{Fore.GREEN}5.{Style.RESET_ALL} Configure Thresholds
+{Fore.GREEN}6.{Style.RESET_ALL} Save Report
+{Fore.GREEN}7.{Style.RESET_ALL} Clear Activity Log
+{Fore.GREEN}0.{Style.RESET_ALL} Exit
+"""
+            print(menu_options)
+            
+            try:
+                choice = input(f"{Fore.CYAN}Select option: {Style.RESET_ALL}")
+                
+                if choice == '1':
+                    print(f"\n{Fore.YELLOW}Performing network connection analysis...{Style.RESET_ALL}")
+                    connections = self.get_network_connections()
+                    
+                    if connections:
+                        suspicious = self.analyze_port_scan_patterns(connections)
+                        vulnerable_scans = self.check_common_scan_ports(connections)
+                        suspicious.extend(vulnerable_scans)
+                        
+                        self.suspicious_activity.extend(suspicious)
+                        
+                        self.display_connections(connections)
+                        
+                        if suspicious:
+                            print(f"\n{Fore.RED}! {len(suspicious)} suspicious scanning activities detected!{Style.RESET_ALL}")
+                        else:
+                            print(f"\n{Fore.GREEN}✓ No suspicious scanning activity detected{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}Failed to get network connections{Style.RESET_ALL}")
+                        
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '2':
+                    interval = input(f"{Fore.CYAN}Enter monitoring interval in seconds (default 5): {Style.RESET_ALL}")
+                    try:
+                        interval = int(interval) if interval else 5
+                    except ValueError:
+                        interval = 5
+                    self.continuous_monitoring(interval)
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '3':
+                    connections = self.get_network_connections()
+                    if connections:
+                        self.display_connections(connections)
+                    else:
+                        print(f"{Fore.YELLOW}No network connections found.{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '4':
+                    self.display_suspicious_activity()
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '5':
+                    self.configure_thresholds()
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '6':
+                    filename = input(f"{Fore.CYAN}Enter filename (press Enter for auto-generated): {Style.RESET_ALL}")
+                    self.save_report(filename if filename else None)
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '7':
+                    self.suspicious_activity.clear()
+                    self.connection_history.clear()
+                    print(f"{Fore.GREEN}Activity log and connection history cleared{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+                    
+                elif choice == '0':
+                    print(f"{Fore.GREEN}Goodbye!{Style.RESET_ALL}")
+                    sys.exit(0)
+                    
+                else:
+                    print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                    time.sleep(1)
+                    
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}Exiting...{Style.RESET_ALL}")
+                sys.exit(0)
+            except Exception as e:
+                print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+                input(f"\n{Fore.YELLOW}Press Enter to continue...{Style.RESET_ALL}")
+
+# ============================================================================
+# MODULE 4: NetSecDragon ANTI-DEAUTH
+# ============================================================================
+
+class WirelessAnalyzer:
+    def __init__(self):
+        self.deauth_attacks = []
+        self.suspicious_activity = []
+        self.monitoring = False
+        self.attack_stats = {
+            'total_attacks': 0,
+            'unique_attackers': set(),
+            'target_networks': set()
+        }
+        
+    def check_root_privileges(self):
+        try:
+            if os.geteuid() != 0:
+                print(colored('\n[x] Need higher privileges, run as root!!!', 'red'))
+                sys.exit(1)
+        except AttributeError:
+            # Windows compatibility - skip privilege check on Windows
+            pass
+
+    def get_wifi_interfaces(self):
+        interfaces = psutil.net_if_addrs()
+        wifi_interfaces = []
+        for interface, addresses in interfaces.items():
+            if interface.startswith('wl') or interface.startswith('wlan'):
+                wifi_interfaces.append(interface)
+        return wifi_interfaces
+
+    def check_dependencies(self):
+        """Check if required tools are installed"""
+        required_tools = ['airmon-ng', 'tshark', 'iwconfig']
+        missing_tools = []
+        
+        for tool in required_tools:
+            try:
+                subprocess.run(['which', tool], capture_output=True, check=True)
+            except subprocess.CalledProcessError:
+                missing_tools.append(tool)
+        
+        if missing_tools:
+            print(colored(f'\n[x] Missing required tools: {", ".join(missing_tools)}', 'red'))
+            print(colored('Please install: apt-get install aircrack-ng wireshark-common', 'yellow'))
+            return False
+        return True
+
+    def get_interface_info(self, interface):
+        """Get detailed information about wireless interface"""
+        try:
+            result = subprocess.run(['iwconfig', interface], capture_output=True, text=True)
+            if result.returncode == 0:
+                output = result.stdout
+                info = {
+                    'name': interface,
+                    'mode': 'Unknown',
+                    'frequency': 'Unknown',
+                    'essid': 'Unknown'
+                }
+                
+                if 'Mode:' in output:
+                    info['mode'] = output.split('Mode:')[1].split()[0]
+                if 'Frequency:' in output:
+                    info['frequency'] = output.split('Frequency:')[1].split()[0]
+                if 'ESSID:' in output:
+                    essid = output.split('ESSID:')[1].split()[0].strip('"')
+                    info['essid'] = essid if essid else 'Not connected'
+                
+                return info
+        except Exception:
+            pass
+        return None
+
+    def enable_monitor_mode(self, interface, stealth_mode=False):
+        """Enable monitor mode with enhanced error handling"""
+        print(colored(f'[+] Enabling monitor mode for {interface}...', 'yellow'))
+        
+        # Kill conflicting processes
+        subprocess.run(['sudo', 'airmon-ng', 'check', 'kill'], capture_output=True)
+        
+        # Start monitor mode
+        command = ['sudo', 'airmon-ng', 'start', interface]
+        if stealth_mode:
+            command.append('1')
+        
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(colored(f'[x] Failed to enable monitor mode: {result.stderr}', 'red'))
+            return None
+        
+        # Determine monitor interface name
+        monitor_interface = f'{interface}mon'
+        return monitor_interface
+
+    def disable_monitor_mode(self, interface):
+        """Disable monitor mode and restore managed mode"""
+        base_interface = interface.replace('mon', '')
+        print(colored(f'[+] Disabling monitor mode for {base_interface}...', 'yellow'))
+        subprocess.run(['sudo', 'airmon-ng', 'stop', interface], capture_output=True)
+
+    def extract_packet_info(self, line):
+        """Extract detailed information from tshark output"""
+        info = {
+            'timestamp': dt.now().isoformat(),
+            'source_mac': 'Unknown',
+            'target_mac': 'Unknown',
+            'bssid': 'Unknown',
+            'reason_code': 'Unknown'
+        }
+        
+        # Extract source MAC
+        if 'SA:' in line:
+            mac_index = line.find('SA:') + 3
+            info['source_mac'] = line[mac_index:mac_index + 17].strip()
+        
+        # Extract target MAC  
+        if 'TA:' in line:
+            mac_index = line.find('TA:') + 3
+            info['target_mac'] = line[mac_index:mac_index + 17].strip()
+            
+        # Extract BSSID
+        if 'BSSID:' in line:
+            mac_index = line.find('BSSID:') + 6
+            info['bssid'] = line[mac_index:mac_index + 17].strip()
+            
+        return info
+
+    def analyze_attack_pattern(self, attack_info):
+        """Analyze attack patterns for threat assessment"""
+        source_mac = attack_info['source_mac']
+        
+        # Count attacks from same source
+        same_source_attacks = sum(1 for attack in self.deauth_attacks 
+                                if attack['source_mac'] == source_mac)
+        
+        severity = 'LOW'
+        if same_source_attacks > 10:
+            severity = 'HIGH'
+        elif same_source_attacks > 5:
+            severity = 'MEDIUM'
+            
+        attack_info['severity'] = severity
+        attack_info['attack_count'] = same_source_attacks
+        
+        return attack_info
+
+    def display_attack_info(self, attack_info):
+        """Display detailed attack information"""
+        severity_color = 'red' if attack_info['severity'] == 'HIGH' else 'yellow'
+        
+        print(f'\n{colored("[!] DEAUTHENTICATION ATTACK DETECTED!", severity_color)}')
+        print(f'{colored("Timestamp:", "green")} {attack_info["timestamp"]}')
+        print(f'{colored("Source MAC:", "green")} {colored(attack_info["source_mac"], "yellow")}')
+        print(f'{colored("Target MAC:", "green")} {colored(attack_info["target_mac"], "cyan")}')
+        print(f'{colored("BSSID:", "green")} {colored(attack_info["bssid"], "cyan")}')
+        print(f'{colored("Severity:", "green")} {colored(attack_info["severity"], severity_color)}')
+        print(f'{colored("Attack Count from this source:", "green")} {attack_info["attack_count"]}')
+
+    def animate_loading(self):
+        """Animated loading indicator"""
+        symbols = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+        while self.monitoring:
+            for symbol in symbols:
+                if not self.monitoring:
+                    break
+                sys.stdout.write(f'\r{colored("[+] Monitoring deauth packets...", "yellow")} {colored(symbol, "cyan")}')
+                sys.stdout.flush()
+                time.sleep(0.1)
+
+    def detect_deauth_attack(self, interface, stealth_mode=False):
+        """Main function to detect deauthentication attacks"""
+        monitor_interface = self.enable_monitor_mode(interface, stealth_mode)
+        if not monitor_interface:
+            return
+            
+        print(f'{colored("[+] Monitor mode enabled for interface", "green")} {colored(monitor_interface, "cyan")}.')
+        print(f'{colored("[+] Starting packet capture...", "yellow")}')
+        
+        # Enhanced tshark command with more packet details
+        command = [
+            'tshark', '-i', monitor_interface, 
+            '-Y', 'wlan.fc.type_subtype == 0x0c',  # Deauth frames
+            '-T', 'fields',
+            '-e', 'frame.time',
+            '-e', 'wlan.sa', 
+            '-e', 'wlan.da',
+            '-e', 'wlan.bssid',
+            '-e', 'wlan.fixed.reason_code'
+        ]
+        
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        
+        def signal_handler(sig, frame):
+            print(colored('\n[+] Stopping monitoring...', 'yellow'))
+            self.monitoring = False
+            self.disable_monitor_mode(monitor_interface)
+            process.terminate()
+            self.save_report()
+            self.display_statistics()
+            sys.exit(0)
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        
+        self.monitoring = True
+        loading_thread = threading.Thread(target=self.animate_loading)
+        loading_thread.daemon = True
+        loading_thread.start()
+        
+        try:
+            for line in process.stdout:
+                if not self.monitoring:
+                    break
+                    
+                line = line.decode().strip()
+                if line and '\t' in line:  # Valid tshark output
+                    self.monitoring = False  # Stop animation
+                    
+                    fields = line.split('\t')
+                    if len(fields) >= 4:
+                        attack_info = {
+                            'timestamp': fields[0] if fields[0] else dt.now().isoformat(),
+                            'source_mac': fields[1] if fields[1] else 'Unknown',
+                            'target_mac': fields[2] if fields[2] else 'Unknown', 
+                            'bssid': fields[3] if fields[3] else 'Unknown',
+                            'reason_code': fields[4] if len(fields) > 4 and fields[4] else 'Unknown'
+                        }
+                        
+                        # Analyze attack pattern
+                        attack_info = self.analyze_attack_pattern(attack_info)
+                        
+                        # Display attack information
+                        self.display_attack_info(attack_info)
+                        
+                        # Store attack data
+                        self.deauth_attacks.append(attack_info)
+                        self.attack_stats['total_attacks'] += 1
+                        self.attack_stats['unique_attackers'].add(attack_info['source_mac'])
+                        self.attack_stats['target_networks'].add(attack_info['bssid'])
+                        
+                        # Write to log file
+                        self.write_attack_details(attack_info)
+                        
+                        # Resume monitoring
+                        self.monitoring = True
+                        loading_thread = threading.Thread(target=self.animate_loading)
+                        loading_thread.daemon = True
+                        loading_thread.start()
+                        
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.monitoring = False
+            self.disable_monitor_mode(monitor_interface)
+            process.terminate()
+
+    def write_attack_details(self, attack_info):
+        """Write attack details to JSON log file"""
+        now = dt.now()
+        filename = f"clawnet_log_{now.strftime('%Y%m%d')}.json"
+        
+        log_entry = {
+            'timestamp': attack_info['timestamp'],
+            'attack_details': attack_info,
+            'detection_time': now.isoformat()
+        }
+        
+        try:
+            # Try to read existing log file
+            try:
+                with open(filename, 'r') as f:
+                    log_data = json.load(f)
+            except FileNotFoundError:
+                log_data = {'attacks': []}
+            
+            # Append new attack
+            log_data['attacks'].append(log_entry)
+            
+            # Write back to file
+            with open(filename, 'w') as f:
+                json.dump(log_data, f, indent=2)
+                
+        except Exception as e:
+            print(colored(f'[!] Error writing to log: {e}', 'red'))
+            
+            # Fallback to text log
+            txt_filename = f"clawnet_log_{now.strftime('%Y%m%d_%H%M%S')}.txt"
+            with open(txt_filename, 'w') as f:
+                f.write(f"Deauth Attack Detected:\n")
+                f.write(f"Timestamp: {attack_info['timestamp']}\n")
+                f.write(f"Source MAC: {attack_info['source_mac']}\n")
+                f.write(f"Target MAC: {attack_info['target_mac']}\n")
+                f.write(f"BSSID: {attack_info['bssid']}\n")
+                f.write(f"Severity: {attack_info['severity']}\n")
+                f.write(f"Attack Count: {attack_info['attack_count']}\n\n")
+
+    def save_report(self):
+        """Save comprehensive analysis report"""
+        if not self.deauth_attacks:
+            return
+            
+        now = dt.now()
+        filename = f"clawnet_report_{now.strftime('%Y%m%d_%H%M%S')}.json"
+        
+        report = {
+            'scan_info': {
+                'timestamp': now.isoformat(),
+                'total_attacks_detected': len(self.deauth_attacks),
+                'unique_attackers': len(self.attack_stats['unique_attackers']),
+                'target_networks': len(self.attack_stats['target_networks'])
+            },
+            'attack_summary': {
+                'high_severity': len([a for a in self.deauth_attacks if a['severity'] == 'HIGH']),
+                'medium_severity': len([a for a in self.deauth_attacks if a['severity'] == 'MEDIUM']),
+                'low_severity': len([a for a in self.deauth_attacks if a['severity'] == 'LOW'])
+            },
+            'attackers': list(self.attack_stats['unique_attackers']),
+            'target_networks': list(self.attack_stats['target_networks']),
+            'detailed_attacks': self.deauth_attacks
+        }
+        
+        try:
+            with open(filename, 'w') as f:
+                json.dump(report, f, indent=2)
+            print(colored(f'\n[+] Report saved to: {filename}', 'green'))
+        except Exception as e:
+            print(colored(f'[!] Error saving report: {e}', 'red'))
+
+    def display_statistics(self):
+        """Display analysis statistics"""
+        if not self.deauth_attacks:
+            print(colored('\n[+] No attacks detected during monitoring session.', 'green'))
+            return
+            
+        print(colored('\n[+] MONITORING SESSION STATISTICS', 'cyan'))
+        print(colored('=' * 50, 'cyan'))
+        print(f'{colored("Total attacks detected:", "green")} {len(self.deauth_attacks)}')
+        print(f'{colored("Unique attackers:", "green")} {len(self.attack_stats["unique_attackers"])}')
+        print(f'{colored("Target networks:", "green")} {len(self.attack_stats["target_networks"])}')
+        
+        # Severity breakdown
+        high_severity = len([a for a in self.deauth_attacks if a['severity'] == 'HIGH'])
+        medium_severity = len([a for a in self.deauth_attacks if a['severity'] == 'MEDIUM']) 
+        low_severity = len([a for a in self.deauth_attacks if a['severity'] == 'LOW'])
+        
+        print(f'{colored("High severity attacks:", "red")} {high_severity}')
+        print(f'{colored("Medium severity attacks:", "yellow")} {medium_severity}')
+        print(f'{colored("Low severity attacks:", "green")} {low_severity}')
+        
+        # Top attackers
+        if self.attack_stats['unique_attackers']:
+            print(f'\n{colored("Detected attackers:", "yellow")}')
+            for attacker in list(self.attack_stats['unique_attackers'])[:5]:
+                attack_count = len([a for a in self.deauth_attacks if a['source_mac'] == attacker])
+                print(f'  {colored(attacker, "red")} - {attack_count} attacks')
+
+    def print_banner(self):
+        banner = f"""{Fore.CYAN}
+ _   _      _   ____            ____                              
+| \ | | ___| |_/ ___|  ___  ___|  _ \ _ __ __ _  __ _  ___  _ __  
+|  \| |/ _ \ __\___ \ / _ \/ __| | | | '__/ _` |/ _` |/ _ \| '_ \ 
+| |\  |  __/ |_ ___) |  __/ (__| |_| | | | (_| | (_| | (_) | | | |
+|_| \_|\___\\__|____/ \___|\___|____/|_|  \__,_|\__, |\___/|_| |_|
+                                                |___/             
+__________________________________________________________________
+       
+  NetSecDragon Network Security Tools | Developed by root0emir
+__________________________________________________________________
+
+                 {Fore.RED}NetSecDragon ANTI-DEAUTH{Fore.CYAN}
+           WiFi Deauth Detection & Analysis{Style.RESET_ALL}
+"""
+        print(banner)
+        
+    def run_deauth_detector(self):
+        """Run NetSecDragon ANTI-DEAUTH module from toolkit"""
+        # Check dependencies and privileges
+        self.check_root_privileges()
+        if not self.check_dependencies():
+            input(f"\n{Fore.YELLOW}Press Enter to return to main menu...{Style.RESET_ALL}")
+            return
+            
+        # Get WiFi interfaces
+        wifi_interfaces = self.get_wifi_interfaces()
+        
+        if not wifi_interfaces:
+            print(colored('\n[x] No wireless interfaces found.', 'red'))
+            input(f"\n{Fore.YELLOW}Press Enter to return to main menu...{Style.RESET_ALL}")
+            return
+            
+        # Interface selection
+        print(colored('\n[+] Available WiFi interfaces:', 'green'))
+        for i, interface in enumerate(wifi_interfaces, 1):
+            info = self.get_interface_info(interface)
+            if info:
+                print(f'{i}. {interface} - Mode: {info["mode"]}, ESSID: {info["essid"]}')
+            else:
+                print(f'{i}. {interface}')
+        
+        try:
+            interface_num = int(input('\nEnter the number corresponding to the interface: '))
+            if interface_num < 1 or interface_num > len(wifi_interfaces):
+                raise ValueError
+            selected_interface = wifi_interfaces[interface_num - 1]
+        except (ValueError, KeyboardInterrupt):
+            print(colored('\n[x] Invalid input or interrupted.', 'red'))
+            input(f"\n{Fore.YELLOW}Press Enter to return to main menu...{Style.RESET_ALL}")
+            return
+        
+        print(colored(f'\n[+] Selected interface: {selected_interface}', 'cyan'))
+        print(colored('[+] Press Ctrl+C to stop monitoring and view statistics\n', 'yellow'))
+        
+        # Start detection
+        self.detect_deauth_attack(selected_interface, False)
+
+
+# ============================================================================
+# UNIFIED MAIN ENTRY POINT
+# ============================================================================
+
+def main():
+    """Main entry point for NetSecDragon Wireless Toolkit"""
+    print(f"{Fore.CYAN}Initializing NetSecDragon Wireless Toolkit...{Style.RESET_ALL}")
+    time.sleep(0.5)
+    
+    toolkit = NetSecDragonToolkit()
+    toolkit.main_menu()
+
+if __name__ == "__main__":
+    main()

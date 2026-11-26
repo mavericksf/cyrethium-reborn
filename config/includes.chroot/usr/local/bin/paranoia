@@ -1,0 +1,324 @@
+#!/bin/bash
+
+# Check if running as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run as root. Please use sudo."
+    exit 1
+ fi
+
+
+display_banner() {
+    clear
+    cat << "EOF"
+============================================================
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⡖⠁⠀⠀⠀⠀⠀⠀⠈⢲⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⣼⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⣧⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣸⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⣇⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⢀⣀⣤⣤⣤⣤⣀⡀⠀⢸⣿⣿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣔⢿⡿⠟⠛⠛⠻⢿⡿⣢⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⣀⣤⣶⣾⣿⣿⣿⣷⣤⣀⡀⢀⣀⣤⣾⣿⣿⣿⣷⣶⣤⡀⠀⠀⠀⠀
+⠀⠀⢠⣾⣿⡿⠿⠿⠿⣿⣿⣿⣿⡿⠏⠻⢿⣿⣿⣿⣿⠿⠿⠿⢿⣿⣷⡀⠀⠀ 
+⠀⢠⡿⠋⠁⠀⠀⢸⣿⡇⠉⠻⣿⠇⠀⠀⠸⣿⡿⠋⢰⣿⡇⠀⠀⠈⠙⢿⡄⠀
+⠀⡿⠁⠀⠀⠀⠀⠘⣿⣷⡀⠀⠰⣿⣶⣶⣿⡎⠀⢀⣾⣿⠇⠀⠀⠀⠀⠈⢿⠀
+⠀⡇⠀⠀⠀⠀⠀⠀⠹⣿⣷⣄⠀⣿⣿⣿⣿⠀⣠⣾⣿⠏⠀⠀⠀⠀⠀⠀⢸⠀
+⠀⠁⠀⠀⠀⠀⠀⠀⠀⠈⠻⢿⢇⣿⣿⣿⣿⡸⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠈⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⣿⣿⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠐⢤⣀⣀⢀⣀⣠⣴⣿⣿⠿⠋⠙⠿⣿⣿⣦⣄⣀⠀⠀⣀⡠⠂⠀⠀⠀
+⠀⠀⠀⠀⠀⠈⠉⠛⠛⠛⠛⠉⠀⠀⠀⠀⠀⠈⠉⠛⠛⠛⠛⠋⠁⠀⠀⠀⠀⠀
+============================================================
+This utility will implement extreme security measures that
+isolate your system from all external connections.
+============================================================
+WARNING: PLEASE STOP TOR ROUTING FIRST IF YOU ARE USING IT!
+============================================================
+
+EOF
+
+    # Display current status prominently
+    if [ -f /etc/cyrethium/paranoia_mode_enabled ]; then
+        echo "============================================================"
+        echo "             [!] PARANOIA MODE: ACTIVE [!]                 "
+        echo "============================================================"
+    else
+        echo "============================================================"
+        echo "             [*] PARANOIA MODE: INACTIVE [*]               "
+        echo "============================================================"
+    fi
+    echo
+}
+
+# Function to enable paranoia mode
+enable_paranoia_mode() {
+    echo "Enabling Paranoia Mode..."
+    echo "This will disconnect your system from all networks and block all connections."
+    echo
+    
+    # Save current firewall state
+    echo "Saving current firewall state..."
+    mkdir -p /etc/cyrethium/backup
+    iptables-save > /etc/cyrethium/backup/iptables-backup.rules
+    ip6tables-save > /etc/cyrethium/backup/ip6tables-backup.rules
+    
+    # Block all incoming and outgoing connections
+    echo "Setting up strict firewall rules..."
+    
+    # Flush existing rules and delete all custom chains
+    iptables -F
+    iptables -X
+    ip6tables -F
+    ip6tables -X
+    
+    # Flush nat and mangle tables
+    iptables -t nat -F
+    iptables -t mangle -F
+    ip6tables -t nat -F
+    ip6tables -t mangle -F
+    
+    # Set default policies to DROP for all chains in standard tables
+    for table in filter nat mangle raw; do
+        if [ "$table" = "filter" ]; then
+            # Only filter table has INPUT, FORWARD, OUTPUT chains
+            iptables -t $table -P INPUT DROP 2>/dev/null || true
+            iptables -t $table -P FORWARD DROP 2>/dev/null || true
+            iptables -t $table -P OUTPUT DROP 2>/dev/null || true
+            ip6tables -t $table -P INPUT DROP 2>/dev/null || true
+            ip6tables -t $table -P FORWARD DROP 2>/dev/null || true
+            ip6tables -t $table -P OUTPUT DROP 2>/dev/null || true
+        fi
+    done
+    
+    # Set default filter table policies explicitly
+    iptables -P INPUT DROP
+    iptables -P FORWARD DROP
+    iptables -P OUTPUT DROP
+    ip6tables -P INPUT DROP 2>/dev/null || true
+    ip6tables -P FORWARD DROP 2>/dev/null || true
+    ip6tables -P OUTPUT DROP 2>/dev/null || true
+
+    # Block all ports explicitly
+    iptables -A INPUT -j DROP
+    iptables -A OUTPUT -j DROP
+    iptables -A FORWARD -j DROP
+    ip6tables -A INPUT -j DROP
+    ip6tables -A OUTPUT -j DROP
+    ip6tables -A FORWARD -j DROP
+    
+    # Block specific high-risk ports explicitly
+    for port in 21 22 23 25 53 80 443 3389 8080; do
+        iptables -A INPUT -p tcp --dport $port -j DROP
+        iptables -A INPUT -p udp --dport $port -j DROP
+        iptables -A OUTPUT -p tcp --dport $port -j DROP
+        iptables -A OUTPUT -p udp --dport $port -j DROP
+    done
+
+    # Only allow localhost connections
+    iptables -A INPUT -i lo -j ACCEPT
+    iptables -A OUTPUT -o lo -j ACCEPT
+    ip6tables -A INPUT -i lo -j ACCEPT
+    ip6tables -A OUTPUT -o lo -j ACCEPT
+    
+    # Block all other loopback traffic
+    iptables -A INPUT ! -i lo -s 127.0.0.0/8 -j DROP
+    iptables -A OUTPUT ! -o lo -d 127.0.0.0/8 -j DROP
+
+    echo "Enhanced firewall configured to block ALL external connections."
+    
+    # We're keeping network interfaces up to avoid desktop environment issues
+    echo "Network interfaces will remain active, but all traffic is blocked by firewall"
+
+    # Block all network modules
+    echo "Blocking network-related kernel modules..."
+    for module in bluetooth btusb cfg80211 mac80211 rfcomm bnep iwlwifi ath9k brcmfmac brcmsmac b43 rtl8187 rtl8192cu rtl8723be wl rsi_91x; do
+        if lsmod | grep -q "^$module"; then
+            rmmod $module 2>/dev/null
+            echo "blacklist $module" >> /etc/modprobe.d/cyrethium-blacklist.conf
+            echo "Removed and blacklisted module: $module"
+        fi
+    done
+
+    # Create static module blacklist for wireless and network devices
+    cat > /etc/modprobe.d/cyrethium-network-blacklist.conf << EOF
+blacklist bluetooth
+blacklist btusb
+blacklist cfg80211
+blacklist mac80211
+blacklist rfcomm
+blacklist bnep
+blacklist rsi_91x
+blacklist rtl8187
+blacklist rtl8192cu
+blacklist rtl8723be
+blacklist iwlwifi
+blacklist ath9k
+blacklist brcmfmac
+blacklist brcmsmac
+blacklist b43
+blacklist wl
+EOF
+
+    # Kill only essential network-related processes
+    echo "Terminating network-related processes..."
+    pkill -9 firefox 2>/dev/null
+    pkill -9 chrome 2>/dev/null
+    pkill -9 chromium 2>/dev/null
+    pkill -9 thunderbird 2>/dev/null
+    pkill -9 transmission 2>/dev/null
+    pkill -9 wget 2>/dev/null
+    pkill -9 curl 2>/dev/null
+    
+    # We're not modifying the desktop environment to avoid issues
+    
+    # Kill VPN related processes
+    for vpn in openvpn wireguard wg-quick strongswan; do
+        pkill -9 -f $vpn 2>/dev/null
+        systemctl stop $vpn 2>/dev/null
+        systemctl mask $vpn 2>/dev/null
+    done
+
+    # Create paranoia mode status file
+    mkdir -p /etc/cyrethium
+    touch /etc/cyrethium/paranoia_mode_enabled
+    
+    echo
+    echo "Paranoia Mode successfully enabled."
+    echo "Your system is now isolated from all networks and external connections."
+    echo "Network security has been maximized."
+    echo
+    read -p "Press Enter to return to the menu..."
+}
+
+# Function to disable paranoia mode
+disable_paranoia_mode() {
+    echo "Disabling Paranoia Mode..."
+    echo
+    
+    # Check if paranoia mode is enabled
+    if [ ! -f /etc/cyrethium/paranoia_mode_enabled ]; then
+        echo "Paranoia Mode is not currently enabled."
+        read -p "Press Enter to return to the menu..."
+        return
+    fi
+    
+    # First, flush all firewall rules and set policies to ACCEPT
+    echo "Flushing firewall rules and resetting to ACCEPT..."
+    
+    # Flush all rules
+    iptables -F
+    iptables -X
+    iptables -t nat -F
+    iptables -t nat -X
+    iptables -t mangle -F
+    iptables -t mangle -X
+    iptables -t raw -F
+    iptables -t raw -X
+    
+    ip6tables -F
+    ip6tables -X
+    ip6tables -t nat -F
+    ip6tables -t nat -X
+    ip6tables -t mangle -F
+    ip6tables -t mangle -X
+    ip6tables -t raw -F
+    ip6tables -t raw -X
+    
+    # Set all policies to ACCEPT
+    iptables -P INPUT ACCEPT
+    iptables -P FORWARD ACCEPT
+    iptables -P OUTPUT ACCEPT
+    ip6tables -P INPUT ACCEPT 2>/dev/null || true
+    ip6tables -P FORWARD ACCEPT 2>/dev/null || true
+    ip6tables -P OUTPUT ACCEPT 2>/dev/null || true
+    
+    echo "Firewall policies set to ACCEPT."
+    
+    # Remove network module blacklists
+    echo "Removing network module blacklists..."
+    rm -f /etc/modprobe.d/cyrethium-blacklist.conf
+    rm -f /etc/modprobe.d/cyrethium-network-blacklist.conf
+    
+    # Reload modules that were blacklisted
+    echo "Reloading network modules..."
+    modprobe bluetooth 2>/dev/null
+    modprobe btusb 2>/dev/null
+    modprobe cfg80211 2>/dev/null
+    modprobe mac80211 2>/dev/null
+    
+    # Bring up all network interfaces
+    echo "Bringing up network interfaces..."
+    for iface in $(ip -o link show | awk -F': ' '{print $2}' | grep -v 'lo'); do
+        ip link set $iface up 2>/dev/null
+        echo "Brought up interface: $iface"
+    done
+    
+    # Re-enable and unmask VPN services
+    echo "Re-enabling VPN services..."
+    for vpn in openvpn wireguard wg-quick strongswan; do
+        systemctl unmask $vpn 2>/dev/null
+    done
+    
+    # Re-enable system services
+    echo "Re-enabling system services..."
+    for service in NetworkManager wpa_supplicant dhcpcd avahi-daemon cups bluetooth; do
+        systemctl unmask $service 2>/dev/null
+        systemctl enable $service 2>/dev/null
+        systemctl restart $service 2>/dev/null
+        echo "Restarted service: $service"
+    done
+    
+    # Trigger network reconnection
+    echo "Triggering network reconnection..."
+    if systemctl is-active --quiet NetworkManager; then
+        nmcli networking off 2>/dev/null
+        sleep 2
+        nmcli networking on 2>/dev/null
+        echo "NetworkManager restarted."
+    fi
+    
+    # Clean up backup files
+    echo "Cleaning up backup files..."
+    if [ -d /etc/cyrethium/backup ]; then
+        rm -rf /etc/cyrethium/backup
+    fi
+    
+    # Remove only the paranoia mode status file, keep the directory
+    rm -f /etc/cyrethium/paranoia_mode_enabled
+    # Keep the /etc/cyrethium directory for future use
+    
+    echo
+    echo "Paranoia Mode successfully disabled."
+    echo "Your system has been returned to normal operation."
+    echo "Network connections have been restored."
+    echo
+    read -p "Press Enter to return to the menu..."
+}
+
+# Main menu loop
+while true; do
+    display_banner
+    echo
+    
+    echo "Select an option:"
+    echo "1) Enable Paranoia Mode"
+    echo "2) Disable Paranoia Mode"
+    echo "3) Exit"
+    echo
+    read -p "Enter your choice (1-3): " choice
+    
+    case $choice in
+        1)
+            enable_paranoia_mode
+            ;;
+        2)
+            disable_paranoia_mode
+            ;;
+        3)
+            echo "Exiting Paranoia Mode utility."
+            exit 0
+            ;;
+        *)
+            echo "Invalid option. Please try again."
+            sleep 2
+            ;;
+    esac
+done

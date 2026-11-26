@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Plaztek
+Comment=Lightweight sandbox using bubblewrap for secure, isolated execution of untrusted apps and scripts
+Comment[tr]=Bubblewrap tabanlı hafif sandbox: güvensiz uygulama ve betikleri izole şekilde çalıştırır
+Comment[es]=Sandbox liviano basado en bubblewrap para la ejecución segura e aislada de aplicaciones y scripts no confiables
+Comment[fr]=Sandbox léger utilisant bubblewrap pour l'exécution sécurisée et isolée d'applications et scripts non fiables
+Comment[de]=Leichte Sandbox mit Bubblewrap für sichere, isolierte Ausführung von nicht vertrauenswürdigen Programmen und Skripten
+Comment[ar]=صندوق رمل خفيف الوزن باستخدام bubblewrap لتشغيل التطبيقات والسكريبتات غير الموثوقة بطريقة معزولة وآمنة
+Comment[ru]=Лёгкая песочница на основе bubblewrap для безопасного и изолированного выполнения ненадёжных приложений и скриптов
+Comment[zh]=基于 bubblewrap 的轻量级沙箱，用于安全隔离地运行不受信任的应用与脚本
+Comment[ja]=bubblewrapを使用した軽量サンドボックス：信頼できないアプリやスクリプトを安全に隔離実行します
+Comment[ko]=bubblewrap 기반의 경량 샌드박스 — 신뢰할 수 없는 앱과 스크립트를 안전하게 격리 실행
+Comment[pt]=Sandbox leve usando bubblewrap para execução segura e isolada de apps e scripts não confiáveis
+Comment[it]=Sandbox leggera basata su bubblewrap per l'esecuzione sicura e isolata di applicazioni e script non affidabili
+Comment[nl]=Lichte sandbox met bubblewrap voor veilige, geïsoleerde uitvoering van onbetrouwbare apps en scripts
+Comment[sv]=Lättvikts-sandbox med bubblewrap för säker, isolerad körning av opålitliga program och skript
+Comment[pl]=Lekki sandbox używający bubblewrap do bezpiecznego, izolowanego uruchamiania nieufnych aplikacji i skryptów
+Exec=mate-terminal -- bash -c "/usr/bin/plaztek --help; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/plaztek.png
+Categories=Security;
+StartupNotify=false

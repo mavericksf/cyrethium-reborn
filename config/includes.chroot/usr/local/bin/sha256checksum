@@ -1,0 +1,249 @@
+#!/bin/bash
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m'
+
+show_menu() {
+    clear
+    echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║                   SHA256 Checksum                        ║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo
+    echo -e "${BLUE}Options:${NC}"
+    echo -e "${YELLOW}1.${NC} ${WHITE}Calculate SHA256 checksum${NC}"
+    echo -e "${YELLOW}2.${NC} ${WHITE}Verify SHA256 checksum${NC}"
+    echo -e "${YELLOW}3.${NC} ${WHITE}Batch calculate checksums${NC}"
+    echo -e "${YELLOW}4.${NC} ${WHITE}Verify from checksum file${NC}"
+    echo -e "${YELLOW}5.${NC} ${WHITE}Help${NC}"
+    echo -e "${YELLOW}0.${NC} ${WHITE}Exit${NC}"
+    echo
+    echo -ne "${PURPLE}Select an option [0-5]: ${NC}"
+}
+
+calculate_checksum() {
+    echo -e "\n${BLUE}═══ Calculate SHA256 Checksum ═══${NC}"
+    echo -ne "${YELLOW}File path: ${NC}"
+    read -r file_path
+    
+    if [[ ! -f "$file_path" ]]; then
+        echo -e "${RED}Error: File not found: $file_path${NC}"
+        return 1
+    fi
+    
+    echo -e "\n${BLUE}Calculating checksum...${NC}"
+    checksum=$(sha256sum "$file_path" | cut -d' ' -f1)
+    
+    echo -e "\n${GREEN}File:${NC} ${WHITE}$file_path${NC}"
+    echo -e "${GREEN}SHA256:${NC} ${WHITE}$checksum${NC}"
+    
+    echo -ne "\n${YELLOW}Save checksum to file? [y/N]: ${NC}"
+    read -r save_choice
+    
+    if [[ "$save_choice" =~ ^[Yy]$ ]]; then
+        checksum_file="${file_path}.sha256"
+        echo "$checksum  $(basename "$file_path")" > "$checksum_file"
+        echo -e "${GREEN}Checksum saved to:${NC} ${WHITE}$checksum_file${NC}"
+    fi
+}
+
+verify_checksum() {
+    echo -e "\n${BLUE}═══ Verify SHA256 Checksum ═══${NC}"
+    echo -ne "${YELLOW}File path: ${NC}"
+    read -r file_path
+    
+    if [[ ! -f "$file_path" ]]; then
+        echo -e "${RED}Error: File not found: $file_path${NC}"
+        return 1
+    fi
+    
+    echo -ne "${YELLOW}Enter expected SHA256 checksum: ${NC}"
+    read -r expected_checksum
+    if [[ ! "$expected_checksum" =~ ^[a-fA-F0-9]{64}$ ]]; then
+        echo -e "${RED}Error: Invalid SHA256 format! (Must be 64 hex characters)${NC}"
+        return 1
+    fi
+    
+    echo -e "\n${BLUE}Verifying checksum...${NC}"
+    actual_checksum=$(sha256sum "$file_path" | cut -d' ' -f1)
+    
+    echo -e "\n${BLUE}File:${NC} ${WHITE}$file_path${NC}"
+    echo -e "${BLUE}Expected:${NC} ${WHITE}$expected_checksum${NC}"
+    echo -e "${BLUE}Actual:${NC}   ${WHITE}$actual_checksum${NC}"
+    
+    if [[ "$actual_checksum" == "$expected_checksum" ]]; then
+        echo -e "\n${GREEN}✓ Checksum verified! File integrity confirmed.${NC}"
+    else
+        echo -e "\n${RED}✗ Checksum mismatch! File may have been modified.${NC}"
+    fi
+}
+
+batch_calculate() {
+    echo -e "\n${BLUE}═══ Batch Checksum Calculation ═══${NC}"
+    echo -ne "${YELLOW}Enter directory path (empty for current directory): ${NC}"
+    read -r dir_path
+    
+    if [[ -z "$dir_path" ]]; then
+        dir_path="."
+    fi
+    
+    if [[ ! -d "$dir_path" ]]; then
+        echo -e "${RED}Error: Directory not found: $dir_path${NC}"
+        return 1
+    fi
+    
+    echo -ne "${YELLOW}File extension filter (e.g: *.txt, empty=all): ${NC}"
+    read -r file_filter
+    
+    if [[ -z "$file_filter" ]]; then
+        file_filter="*"
+    fi
+    
+    output_file="checksums_$(date +%Y%m%d_%H%M%S).sha256"
+    
+    echo -e "\n${BLUE}Calculating checksums...${NC}"
+    
+    find "$dir_path" -name "$file_filter" -type f -exec sha256sum {} \; > "$output_file" 2>/dev/null
+    
+    if [[ -s "$output_file" ]]; then
+        file_count=$(wc -l < "$output_file")
+        echo -e "\n${GREEN}✓ Checksums calculated for $file_count files${NC}"
+        echo -e "${GREEN}Results saved to:${NC} ${WHITE}$output_file${NC}"
+        
+        echo -ne "\n${YELLOW}Display results? [y/N]: ${NC}"
+        read -r view_choice
+        
+        if [[ "$view_choice" =~ ^[Yy]$ ]]; then
+            echo -e "\n${BLUE}═══ Calculated Checksums ═══${NC}"
+            echo -e "${WHITE}"; cat "$output_file"; echo -e "${NC}"
+        fi
+    else
+        echo -e "${RED}Error: No files found or operation failed${NC}"
+        rm -f "$output_file"
+    fi
+}
+
+verify_from_file() {
+    echo -e "\n${BLUE}═══ Verify from Checksum File ═══${NC}"
+    echo -ne "${YELLOW}Enter checksum file path (.sha256): ${NC}"
+    read -r checksum_file
+    
+    if [[ ! -f "$checksum_file" ]]; then
+        echo -e "${RED}Error: Checksum file not found: $checksum_file${NC}"
+        return 1
+    fi
+    
+    echo -e "\n${BLUE}Verifying checksums...${NC}"
+    
+    # Change to the directory containing the checksum file for relative paths
+    pushd "$(dirname "$checksum_file")" > /dev/null
+    
+    # Use sha256sum -c to verify
+    result=$(sha256sum -c "$(basename "$checksum_file")" 2>&1)
+    exit_code=$?
+    
+    popd > /dev/null
+    
+    echo -e "\n${BLUE}═══ Verification Results ═══${NC}"
+    
+    if [[ $exit_code -eq 0 ]]; then
+        echo -e "${GREEN}✓ All files verified successfully!${NC}"
+    else
+        echo -e "${RED}✗ Issues detected with some files:${NC}"
+    fi
+    
+    echo -e "${WHITE}$result${NC}"
+}
+
+show_help() {
+    clear
+    echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║                       Help                              ║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo
+    echo -e "${BLUE}This tool is used for SHA256 checksum operations:${NC}"
+    echo
+    echo -e "${YELLOW}1. Checksum Calculation:${NC}"
+    echo -e "${WHITE}   - Calculates SHA256 value of a single file${NC}"
+    echo -e "${WHITE}   - Shows result on screen and optionally saves to file${NC}"
+    echo
+    echo -e "${YELLOW}2. Checksum Verification:${NC}"
+    echo -e "${WHITE}   - Compares file's current checksum with expected value${NC}"
+    echo -e "${WHITE}   - Checks file integrity${NC}"
+    echo
+    echo -e "${YELLOW}3. Batch Processing:${NC}"
+    echo -e "${WHITE}   - Calculates checksums for all files in a directory${NC}"
+    echo -e "${WHITE}   - Saves results to .sha256 file${NC}"
+    echo
+    echo -e "${YELLOW}4. File Verification:${NC}"
+    echo -e "${WHITE}   - Verifies all checksums in .sha256 file${NC}"
+    echo -e "${WHITE}   - Uses sha256sum -c command${NC}"
+    echo
+    echo -e "${BLUE}Requirements:${NC}"
+    echo -e "${WHITE}   - Debian Linux system${NC}"
+    echo -e "${WHITE}   - sha256sum command (coreutils package)${NC}"
+    echo -e "${WHITE}   - Bash shell${NC}"
+    echo
+    echo -ne "${YELLOW}Press Enter to return to main menu...${NC}"
+    read
+}
+
+check_dependencies() {
+    if ! command -v sha256sum &> /dev/null; then
+        echo -e "${RED}Error: sha256sum command not found!${NC}"
+        echo -e "${YELLOW}Please install coreutils package: sudo apt install coreutils${NC}"
+        exit 1
+    fi
+}
+
+pause() {
+    echo
+    echo -ne "${YELLOW}Press Enter to continue...${NC}"
+    read
+}
+
+main() {
+    check_dependencies
+    
+    while true; do
+        show_menu
+        read -r choice
+        
+        case $choice in
+            1)
+                calculate_checksum
+                pause
+                ;;
+            2)
+                verify_checksum
+                pause
+                ;;
+            3)
+                batch_calculate
+                pause
+                ;;
+            4)
+                verify_from_file
+                pause
+                ;;
+            5)
+                show_help
+                ;;
+            0)
+                echo -e "\n${GREEN}Exiting... Goodbye!${NC}"
+                exit 0
+                ;;
+            *)
+                echo -e "\n${RED}Invalid choice! Please enter a number between 0-5.${NC}"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+main "$@"

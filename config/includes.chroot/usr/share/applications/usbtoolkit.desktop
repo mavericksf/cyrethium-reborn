@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=USB Toolkit
+Comment=USB Device Management Tool
+Comment[tr]=USB Cihaz Yönetim Aracı
+Comment[es]=Herramienta de Gestión de Dispositivos USB
+Comment[fr]=Outil de Gestion des Périphériques USB
+Comment[de]=USB-Geräte-Verwaltungstool
+Comment[ar]=أداة إدارة أجهزة USB
+Comment[ru]=Инструмент управления USB устройствами
+Comment[zh]=USB设备管理工具
+Comment[ja]=USBデバイス管理ツール
+Comment[ko]=USB 장치 관리 도구
+Comment[pt]=Ferramenta de Gerenciamento de Dispositivos USB
+Comment[it]=Strumento di Gestione Dispositivi USB
+Comment[nl]=USB-apparaat Beheertool
+Comment[sv]=USB-enhetshanteringsverktyg
+Comment[pl]=Narzędzie Zarządzania Urządzeniami USB
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/usbtoolkit; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/usbtoolkit.png
+Categories=Security;
+StartupNotify=false

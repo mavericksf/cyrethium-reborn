@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Address Validator
+Comment=Cryptocurrency address validation tool for Bitcoin, Ethereum, Litecoin
+Comment[tr]=Bitcoin, Ethereum, Litecoin adres doğrulama aracı
+Comment[es]=Herramienta de validación de direcciones de criptomonedas
+Comment[fr]=Outil de validation d'adresses de cryptomonnaies
+Comment[de]=Kryptowährungs-Adressvalidierungstool
+Comment[ar]=أداة التحقق من عناوين العملات المشفرة
+Comment[ru]=Инструмент проверки адресов криптовалют
+Comment[zh]=加密货币地址验证工具
+Comment[ja]=暗号通貨アドレス検証ツール
+Comment[ko]=암호화폐 주소 검증 도구
+Comment[pt]=Ferramenta de validação de endereços de criptomoedas
+Comment[it]=Strumento di validazione indirizzi criptovalute
+Comment[nl]=Cryptocurrency adres validatie tool
+Comment[sv]=Kryptovaluta adressvalideringsverktyg
+Comment[pl]=Narzędzie walidacji adresów kryptowalut
+Exec=address-validator
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/addres.png
+Categories=Cryptocurrency;
+StartupNotify=false

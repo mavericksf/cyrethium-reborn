@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Private Key Converter
+Comment=Convert between different cryptocurrency private key formats (HEX, WIF)
+Comment[tr]=Farklı kripto para özel anahtar formatları arasında dönüştürme (HEX, WIF)
+Comment[es]=Convertir entre diferentes formatos de claves privadas de criptomonedas (HEX, WIF)
+Comment[fr]=Convertir entre différents formats de clés privées de cryptomonnaies (HEX, WIF)
+Comment[de]=Zwischen verschiedenen Kryptowährungs-Private-Key-Formaten konvertieren (HEX, WIF)
+Comment[ar]=تحويل بين تنسيقات المفاتيح الخاصة للعملات المشفرة المختلفة (HEX, WIF)
+Comment[ru]=Конвертация между различными форматами приватных ключей криптовалют (HEX, WIF)
+Comment[zh]=在不同的加密货币私钥格式之间转换 (HEX, WIF)
+Comment[ja]=異なる暗号通貨秘密鍵フォーマット間の変換 (HEX, WIF)
+Comment[ko]=다양한 암호화폐 개인키 형식 간 변환 (HEX, WIF)
+Comment[pt]=Converter entre diferentes formatos de chaves privadas de criptomoedas (HEX, WIF)
+Comment[it]=Convertire tra diversi formati di chiavi private di criptovalute (HEX, WIF)
+Comment[nl]=Converteren tussen verschillende cryptocurrency private key formaten (HEX, WIF)
+Comment[sv]=Konvertera mellan olika kryptovaluta privata nyckelformat (HEX, WIF)
+Comment[pl]=Konwertuj między różnymi formatami kluczy prywatnych kryptowalut (HEX, WIF)
+Exec=private-key-converter
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/privatekey.png
+Categories=Cryptocurrency;
+StartupNotify=false

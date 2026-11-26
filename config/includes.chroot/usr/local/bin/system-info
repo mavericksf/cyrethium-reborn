@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""
+Cyrethium System Information GUI
+
+developed by root0emir
+"""
+
+import sys
+import os
+import platform
+import subprocess
+import psutil
+import time
+from datetime import datetime, timedelta
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QGridLayout, QLabel, QFrame, QScrollArea
+)
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtGui import QFont, QPixmap, QIcon
+
+class SystemInfoWorker(QThread):
+    info_updated = pyqtSignal(dict)
+    
+    def run(self):
+        info = self.collect_system_info()
+        self.info_updated.emit(info)
+    
+    def collect_system_info(self):
+        info = {}
+        
+        try:
+            info['hostname'] = platform.node()
+            info['system'] = platform.system()
+            info['release'] = platform.release()
+            info['version'] = platform.version()
+            info['machine'] = platform.machine()
+            info['architecture'] = platform.architecture()[0]
+            
+            # Distribution info from /etc/os-release
+            try:
+                with open('/etc/os-release', 'r') as f:
+                    os_info = {}
+                    for line in f:
+                        if '=' in line:
+                            key, value = line.strip().split('=', 1)
+                            os_info[key] = value.strip('"')
+                    
+                    info['distro_name'] = os_info.get('NAME', 'Cyrethium OS')
+                    info['distro_version'] = os_info.get('VERSION', 'Stable')
+                    info['distro_id'] = os_info.get('ID', 'debian')
+                    info['distro_codename'] = os_info.get('VERSION_CODENAME', 'Reborn')
+                    info['distro_base'] = os_info.get('ID_LIKE', 'Debian')
+                    info['home_url'] = os_info.get('HOME_URL') or 'https://cyrethium.org'
+                    info['docs_url'] = os_info.get('DOCUMENTATION_URL') or 'https://cyrethium.org/docs'
+            except:
+                info['distro_name'] = 'Cyrethium OS'
+                info['distro_version'] = 'Stable'
+                info['distro_id'] = 'debian'
+                info['distro_codename'] = 'Reborn'
+                info['distro_base'] = 'Debian'
+                info['home_url'] = 'https://cyrethium.org'
+                info['docs_url'] = 'https://cyrethium.org/docs'
+            
+            # CPU information
+            info['cpu_model'] = platform.processor() or 'Unknown'
+            info['cpu_cores'] = psutil.cpu_count(logical=False)
+            info['cpu_threads'] = psutil.cpu_count(logical=True)
+            try:
+                info['cpu_freq'] = psutil.cpu_freq()
+            except:
+                info['cpu_freq'] = None
+            
+            # Memory information
+            mem = psutil.virtual_memory()
+            info['total_memory'] = mem.total
+            info['available_memory'] = mem.available
+            info['used_memory'] = mem.used
+            info['memory_percent'] = mem.percent
+            
+            # Disk information
+            disk = psutil.disk_usage('/')
+            info['total_disk'] = disk.total
+            info['used_disk'] = disk.used
+            info['free_disk'] = disk.free
+            info['disk_percent'] = (disk.used / disk.total) * 100
+            
+            # Kernel information
+            info['kernel_version'] = platform.release()
+            try:
+                kernel_info = subprocess.check_output(['uname', '-a'], text=True).strip()
+                info['kernel_full'] = kernel_info
+            except:
+                info['kernel_full'] = f"{platform.system()} {platform.release()}"
+            
+            # Uptime
+            try:
+                uptime_seconds = time.time() - psutil.boot_time()
+                info['uptime'] = str(timedelta(seconds=int(uptime_seconds)))
+            except:
+                info['uptime'] = 'Unknown'
+                
+        except Exception as e:
+            print(f"Error collecting system info: {e}")
+        
+        return info
+
+class InfoCard(QFrame):
+    def __init__(self, title, content, icon=None):
+        super().__init__()
+        self.setup_ui(title, content, icon)
+    
+    def setup_ui(self, title, content, icon):
+        self.setFrameStyle(QFrame.StyledPanel)
+        self.setStyleSheet("""
+            InfoCard {
+                background-color: #2d3748;
+                border: 1px solid #4a5568;
+                border-radius: 8px;
+                padding: 12px;
+                margin: 4px;
+            }
+            InfoCard:hover {
+                background-color: #374151;
+                border-color: #60a5fa;
+            }
+        """)
+        
+        layout = QVBoxLayout()
+        layout.setSpacing(8)
+        
+        title_label = QLabel(title)
+        title_label.setStyleSheet("""
+            QLabel {
+                color: #60a5fa;
+                font-weight: bold;
+                font-size: 14px;
+                margin-bottom: 4px;
+            }
+        """)
+        
+        content_label = QLabel(content)
+        content_label.setStyleSheet("""
+            QLabel {
+                color: #e2e8f0;
+                font-size: 12px;
+                line-height: 1.4;
+            }
+        """)
+        content_label.setWordWrap(True)
+        
+        layout.addWidget(title_label)
+        layout.addWidget(content_label)
+        
+        self.setLayout(layout)
+
+class SystemInfoGUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.system_info = {}
+        self.setup_ui()
+        self.setup_timer()
+        self.load_system_info()
+    
+    def setup_ui(self):
+        self.setWindowTitle("Cyrethium System Information")
+        self.setGeometry(100, 100, 1000, 700)
+        
+        if os.path.exists('/usr/share/icons/cyrethium/logo.png'):
+            self.setWindowIcon(QIcon('/usr/share/icons/cyrethium/logo.png'))
+        
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #1a202c;
+                color: #e2e8f0;
+            }
+            QScrollArea {
+                background-color: #1a202c;
+                border: none;
+            }
+            QWidget {
+                background-color: #1a202c;
+                color: #e2e8f0;
+            }
+        """)
+        
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        
+        header_layout = QHBoxLayout()
+        
+        logo_label = QLabel()
+        if os.path.exists('/usr/share/icons/cyrethium/logo.png'):
+            pixmap = QPixmap('/usr/share/icons/cyrethium/logo.png')
+            scaled_pixmap = pixmap.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            logo_label.setPixmap(scaled_pixmap)
+        else:
+            logo_label.setText("")
+            logo_label.setStyleSheet("font-size: 48px;")
+        
+        title_label = QLabel("Cyrethium System Information")
+        title_label.setStyleSheet("""
+            QLabel {
+                color: #60a5fa;
+                font-size: 24px;
+                font-weight: bold;
+                margin-left: 16px;
+            }
+        """)
+        
+        header_layout.addWidget(logo_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        
+        main_layout.addLayout(header_layout)
+        
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+        content_widget = QWidget()
+        self.content_layout = QGridLayout(content_widget)
+        self.content_layout.setSpacing(16)
+        
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
+    
+    def setup_timer(self):
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_dynamic_info)
+        self.timer.start(5000)
+    
+    def load_system_info(self):
+        self.worker = SystemInfoWorker()
+        self.worker.info_updated.connect(self.display_system_info)
+        self.worker.start()
+    
+    def display_system_info(self, info):
+        self.system_info = info
+        
+        for i in reversed(range(self.content_layout.count())):
+            item = self.content_layout.itemAt(i)
+            if item:
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
+        
+        row, col = 0, 0
+        
+        distro_info = f"""Name: {info.get('distro_name', 'Unknown')}
+Version: {info.get('distro_version', 'Unknown')}
+Codename: {info.get('distro_codename', 'Unknown')}
+Base: {info.get('distro_base', 'Unknown')}
+Website: {info.get('home_url', 'N/A')}
+Docs: {info.get('docs_url', 'N/A')}"""
+        
+        distro_card = InfoCard("Distribution", distro_info)
+        self.content_layout.addWidget(distro_card, row, col)
+        
+        col += 1
+        system_info_text = f"""Hostname: {info.get('hostname', 'Unknown')}
+System: {info.get('system', 'Unknown')}
+Architecture: {info.get('architecture', 'Unknown')}
+Machine: {info.get('machine', 'Unknown')}
+Kernel: {info.get('kernel_version', 'Unknown')}
+Uptime: {info.get('uptime', 'Unknown')}"""
+        
+        system_card = InfoCard("System", system_info_text)
+        self.content_layout.addWidget(system_card, row, col)
+        
+        row += 1
+        col = 0
+        cpu_info_text = f"""Processor: {info.get('cpu_model', 'Unknown')}
+Cores: {info.get('cpu_cores', 'Unknown') if info.get('cpu_cores') else 'Unknown'}
+Threads: {info.get('cpu_threads', 'Unknown') if info.get('cpu_threads') else 'Unknown'}"""
+        
+        if info.get('cpu_freq'):
+            freq = info['cpu_freq']
+            cpu_info_text += f"\nFrequency: {freq.current:.0f} MHz"
+        
+        cpu_card = InfoCard("CPU", cpu_info_text)
+        self.content_layout.addWidget(cpu_card, row, col)
+        
+        col += 1
+        total_mem = info.get('total_memory', 0)
+        used_mem = info.get('used_memory', 0)
+        mem_percent = info.get('memory_percent', 0)
+        
+        memory_info_text = f"""Total: {self.format_bytes(total_mem)}
+Used: {self.format_bytes(used_mem)}
+Usage: {mem_percent:.1f}%"""
+        
+        memory_card = InfoCard("Memory", memory_info_text)
+        self.content_layout.addWidget(memory_card, row, col)
+        
+        row += 1
+        col = 0
+        total_disk = info.get('total_disk', 0)
+        used_disk = info.get('used_disk', 0)
+        disk_percent = info.get('disk_percent', 0)
+        
+        disk_info_text = f"""Total: {self.format_bytes(total_disk)}
+Used: {self.format_bytes(used_disk)}
+Usage: {disk_percent:.1f}%"""
+        
+        disk_card = InfoCard("Storage", disk_info_text)
+        self.content_layout.addWidget(disk_card, row, col)
+        
+        col += 1
+        project_info_text = f"""Developer: root0emir
+GitHub: https://github.com/Cyrethium
+Site: https://cyrethium.org
+Project: Cyrethium
+License: GPL-3.0
+Version: Stable Release"""
+        
+        project_card = InfoCard("Project Info", project_info_text)
+        self.content_layout.addWidget(project_card, row, col)
+    
+    def update_dynamic_info(self):
+        try:
+            self.load_system_info()
+        except Exception as e:
+            print(f"Error updating dynamic info: {e}")
+    
+    def format_bytes(self, bytes_value):
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if bytes_value < 1024.0:
+                return f"{bytes_value:.1f} {unit}"
+            bytes_value /= 1024.0
+        return f"{bytes_value:.1f} PB"
+
+def main():
+    app = QApplication(sys.argv)
+    
+    app.setApplicationName("Cyrethium System Info")
+    app.setApplicationVersion("1.0")
+    
+    window = SystemInfoGUI()
+    window.show()
+    
+    sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()
+                           

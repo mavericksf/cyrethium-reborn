@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Coin Watch
+Comment=Cryptocurrency price monitoring and alerts
+Comment[tr]=Kripto para fiyat takibi ve uyarıları
+Comment[es]=Monitoreo de precios de criptomonedas y alertas
+Comment[fr]=Surveillance des prix des cryptomonnaies et alertes
+Comment[de]=Überwachung von Kryptowährungspreisen und Warnungen
+Comment[ar]=مراقبة أسعار العملات المشفرة والتنبيهات
+Comment[ru]=Мониторинг цен на криптовалюты и оповещения
+Comment[zh]=加密货币价格监控和提醒
+Comment[ja]=暗号通貨価格監視とアラート
+Comment[ko]=암호화폐 가격 모니터링 및 알림
+Comment[pt]=Monitoramento de preços de criptomoedas e alertas
+Comment[it]=Monitoraggio prezzi criptovalute e avvisi
+Comment[nl]=Cryptocurrency prijsmonitoring en waarschuwingen
+Comment[sv]=Kryptovaluta prisövervakning och varningar
+Comment[pl]=Monitoring cen kryptowalut i ostrzeżenia
+Exec=mate-terminal -- bash -c "/usr/local/bin/coin-watch; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/coinwatch.png
+Categories=Cryptocurrency;
+StartupNotify=false

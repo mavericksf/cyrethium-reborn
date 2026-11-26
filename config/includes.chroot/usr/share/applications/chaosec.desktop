@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=ChaoSec
+Comment=Manipulates network traffic and creates fake packets to hinder traffic analysis
+Comment[tr]=Ağ trafiğini manipüle eder ve sahte paketler oluşturarak trafik analizini zorlaştırır
+Comment[es]=Manipula el tráfico de red y genera paquetes falsos para dificultar el análisis del tráfico
+Comment[fr]=Manipule le trafic réseau et crée des paquets factices pour compliquer l'analyse du trafic
+Comment[de]=Manipuliert den Netzwerkverkehr und erstellt gefälschte Pakete, um die Verkehrsanalyse zu erschweren
+Comment[ar]=يتلاعب بحركة الشبكة وينشئ حزمًا مزيفة لجعل تحليل الحركة أكثر صعوبة
+Comment[ru]=Манипулирует сетевым трафиком и создает поддельные пакеты для усложнения анализа трафика
+Comment[zh]=操纵网络流量并生成伪造数据包以使流量分析更加困难
+Comment[ja]=ネットワークトラフィックを操作し、偽のパケットを作成してトラフィック解析を困難にします
+Comment[ko]=네트워크 트래픽을 조작하고 가짜 패킷을 생성하여 트래픽 분석을 어렵게 합니다
+Comment[pt]=Manipula o tráfego de rede e gera pacotes falsos para dificultar a análise do tráfego
+Comment[it]=Manipola il traffico di rete e crea pacchetti falsi per rendere più difficile l'analisi del traffico
+Comment[nl]=Manipuleert netwerkverkeer en maakt nep-pakketten om het verkeer te bemoeilijken
+Comment[sv]=Manipulerar nätverkstrafik och skapar falska paket för att försvåra trafikanalys
+Comment[pl]=Manipuluje ruchem sieciowym i tworzy fałszywe pakiety, aby utrudnić analizę ruchu
+Exec=mate-terminal -- bash -c "/usr/local/bin/chaosec --help; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/chaosec.png
+Categories=NetworkSec;
+StartupNotify=false

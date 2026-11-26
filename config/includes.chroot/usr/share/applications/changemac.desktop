@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Change MAC
+Comment=Change MAC Address
+Comment[tr]=MAC Adresini Değiştir
+Comment[es]=Cambiar dirección MAC
+Comment[fr]=Changer l'adresse MAC
+Comment[de]=MAC-Adresse ändern
+Comment[ar]=تغيير عنوان MAC لواجهة الشبكة
+Comment[ru]=Изменение MAC-адреса сетевого интерфейса
+Comment[zh]=更改网络接口的MAC地址
+Comment[ja]=ネットワークインターフェースのMACアドレスを変更します
+Comment[ko]=네트워크 인터페이스의 MAC 주소를 변경합니다
+Comment[pt]=Alterar endereço MAC da interface de rede
+Comment[it]=Cambia l'indirizzo MAC dell'interfaccia di rete
+Comment[nl]=Wijzig MAC-adres van netwerkinterface
+Comment[sv]=Ändra MAC-adress för nätverksgränssnitt
+Comment[pl]=Zmień adres MAC interfejsu sieciowego
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/change-mac; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=Privacy;
+StartupNotify=false

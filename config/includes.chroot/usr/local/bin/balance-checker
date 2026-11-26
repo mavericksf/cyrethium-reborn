@@ -1,0 +1,383 @@
+#!/usr/bin/env python3
+"""
+Cryptocurrency Balance Checker Tool
+Check balances for Bitcoin, Ethereum, Litecoin addresses
+Uses public APIs to fetch balance information
+"""
+
+import sys
+import json
+import requests
+import os
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                            QHBoxLayout, QLabel, QPushButton, QLineEdit, 
+                            QTextEdit, QGroupBox, QComboBox, QProgressBar, QFrame)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QDateTime
+from PyQt5.QtGui import QFont
+
+
+class BalanceCheckerThread(QThread):
+    """Thread for checking balances without blocking UI"""
+    balance_checked = pyqtSignal(dict)
+    
+    def __init__(self, address, crypto_type):
+        super().__init__()
+        self.address = address
+        self.crypto_type = crypto_type
+        self.session = requests.Session()
+        self.session.trust_env = False
+        self.session.headers.update({"User-Agent": "Mozilla/5.0"})
+        tor_proxy = os.environ.get("CYRETHIUM_TOR_PROXY", "socks5h://127.0.0.1:9050")
+        self.session.proxies = {
+            "http": tor_proxy,
+            "https": tor_proxy,
+        }
+
+    def run(self):
+        """Check balance in background thread"""
+        try:
+            if self.crypto_type == "Bitcoin":
+                result = self.check_bitcoin_balance(self.address)
+            elif self.crypto_type == "Ethereum":
+                result = self.check_ethereum_balance(self.address)
+            elif self.crypto_type == "Litecoin":
+                result = self.check_litecoin_balance(self.address)
+            else:
+                result = {"success": False, "error": "Unsupported cryptocurrency"}
+            
+            self.balance_checked.emit(result)
+            
+        except Exception as e:
+            self.balance_checked.emit({"success": False, "error": str(e)})
+    
+    def check_bitcoin_balance(self, address):
+        """Check Bitcoin balance using BlockCypher API"""
+        try:
+            url = f"https://api.blockcypher.com/v1/btc/main/addrs/{address}/balance"
+            response = self.session.get(url, timeout=20)
+            
+            if response.status_code == 200:
+                data = response.json()
+                balance_satoshi = data.get('balance', 0)
+                balance_btc = balance_satoshi / 100000000
+                
+                return {
+                    "success": True,
+                    "balance": balance_btc,
+                    "balance_raw": balance_satoshi,
+                    "unit": "BTC",
+                    "unit_raw": "satoshi",
+                    "transactions": data.get('n_tx', 0),
+                    "api_source": "BlockCypher"
+                }
+            else:
+                return {"success": False, "error": f"API Error: {response.status_code}"}
+                
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Network error: {str(e)}"}
+        except Exception as e:
+            return {"success": False, "error": f"Bitcoin balance check error: {str(e)}"}
+    
+    def check_ethereum_balance(self, address):
+        """Check Ethereum balance using multiple providers with fallback.
+        
+        Provider order:
+        1) Etherscan (if ETHERSCAN_API_KEY is set)
+        2) Public JSON-RPC endpoints (PublicNode, Ankr)
+        """
+        try:
+            # Basic address validation
+            addr = address.lower().strip()
+            if not (addr.startswith("0x") and len(addr) == 42 and all(c in "0123456789abcdef" for c in addr[2:])):
+                return {"success": False, "error": "Invalid Ethereum address format"}
+            
+            headers = {"User-Agent": "Mozilla/5.0"}
+            
+            # 1) Try Etherscan if API key is provided
+            api_key = os.environ.get("ETHERSCAN_API_KEY")
+            etherscan_error = None
+            if api_key:
+                try:
+                    url = "https://api.etherscan.io/api"
+                    params = {
+                        "module": "account",
+                        "action": "balance",
+                        "address": address,
+                        "tag": "latest",
+                        "apikey": api_key,
+                    }
+                    response = self.session.get(url, params=params, headers=headers, timeout=20)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get("status") == "1":
+                            balance_wei = int(data.get("result", "0"))
+                            balance_eth = balance_wei / 10**18
+                            return {
+                                "success": True,
+                                "balance": balance_eth,
+                                "balance_raw": balance_wei,
+                                "unit": "ETH",
+                                "unit_raw": "wei",
+                                "api_source": "Etherscan"
+                            }
+                        else:
+                            etherscan_error = f"Etherscan error: {data.get('message', 'Unknown error')} {data.get('result', '')}".strip()
+                    else:
+                        etherscan_error = f"Etherscan HTTP {response.status_code}"
+                except requests.RequestException as e:
+                    etherscan_error = f"Etherscan network error: {str(e)}"
+            
+            # 2) Fallback to public JSON-RPC endpoints
+            rpc_endpoints = [
+                ("PublicNode", "https://ethereum.publicnode.com"),
+                ("Ankr", "https://rpc.ankr.com/eth"),
+            ]
+            payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [address, "latest"], "id": 1}
+            last_err = etherscan_error
+            for name, endpoint in rpc_endpoints:
+                try:
+                    r = self.session.post(endpoint, json=payload, headers=headers, timeout=20)
+                    if r.status_code == 200:
+                        jd = r.json()
+                        result = jd.get("result")
+                        if isinstance(result, str) and result.startswith("0x"):
+                            balance_wei = int(result, 16)
+                            balance_eth = balance_wei / 10**18
+                            return {
+                                "success": True,
+                                "balance": balance_eth,
+                                "balance_raw": balance_wei,
+                                "unit": "ETH",
+                                "unit_raw": "wei",
+                                "api_source": f"{name} RPC"
+                            }
+                        else:
+                            last_err = f"{name} RPC invalid response"
+                    else:
+                        last_err = f"{name} RPC HTTP {r.status_code}"
+                except requests.RequestException as e:
+                    last_err = f"{name} RPC network error: {str(e)}"
+            
+            # If all providers failed, return most informative error
+            if last_err:
+                return {"success": False, "error": last_err}
+            return {"success": False, "error": "Unable to fetch Ethereum balance: no provider succeeded"}
+        
+        except Exception as e:
+            return {"success": False, "error": f"Ethereum balance check error: {str(e)}"}
+    
+    def check_litecoin_balance(self, address):
+        """Check Litecoin balance using BlockCypher API"""
+        try:
+            url = f"https://api.blockcypher.com/v1/ltc/main/addrs/{address}/balance"
+            response = self.session.get(url, timeout=20) 
+            if response.status_code == 200:
+                data = response.json()
+                balance_litoshi = data.get('balance', 0)
+                balance_ltc = balance_litoshi / 100000000
+                
+                return {
+                    "success": True,
+                    "balance": balance_ltc,
+                    "balance_raw": balance_litoshi,
+                    "unit": "LTC",
+                    "unit_raw": "litoshi",
+                    "transactions": data.get('n_tx', 0),
+                    "api_source": "BlockCypher"
+                }
+            else:
+                return {"success": False, "error": f"API Error: {response.status_code}"}
+                
+        except requests.RequestException as e:
+            return {"success": False, "error": f"Network error: {str(e)}"}
+        except Exception as e:
+            return {"success": False, "error": f"Litecoin balance check error: {str(e)}"}
+
+
+class BalanceCheckerApp(QMainWindow):
+    """Balance Checker GUI Application"""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet(self.get_dark_theme())
+    
+    def init_ui(self):
+        self.setWindowTitle("Balance Checker")
+        self.setGeometry(300, 300, 600, 500)
+        
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Simple header
+        header = QLabel("Balance Checker")
+        header.setAlignment(Qt.AlignCenter)
+        header.setFont(QFont("Arial", 16, QFont.Bold))
+        
+        # Cryptocurrency selection
+        crypto_label = QLabel("Cryptocurrency:")
+        self.crypto_combo = QComboBox()
+        self.crypto_combo.addItems(["Bitcoin", "Ethereum", "Litecoin"])
+        
+        # Address input
+        address_label = QLabel("Address:")
+        self.address_input = QLineEdit()
+        self.address_input.setPlaceholderText("Enter address to check...")
+        
+        # Check button
+        self.check_button = QPushButton("Check Balance")
+        self.check_button.clicked.connect(self.check_balance)
+        
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        
+        # Results
+        self.results_text = QTextEdit()
+        self.results_text.setReadOnly(True)
+        self.results_text.setPlainText("Enter an address to check balance...")
+        
+        # Layout
+        layout.addWidget(header)
+        layout.addWidget(crypto_label)
+        layout.addWidget(self.crypto_combo)
+        layout.addWidget(address_label)
+        layout.addWidget(self.address_input)
+        layout.addWidget(self.check_button)
+        layout.addWidget(self.progress_bar)
+        layout.addWidget(self.results_text)
+        
+        central_widget.setLayout(layout)
+        # Create a status bar instance for messages
+        self.status_bar = self.statusBar()
+    
+    def check_balance(self):
+        """Check balance for entered address"""
+        address = self.address_input.text().strip()
+        crypto_type = self.crypto_combo.currentText()
+        
+        if not address:
+            self.results_text.setText("Please enter an address to check")
+            return
+        
+        # Show progress
+        self.check_button.setEnabled(False)
+        self.check_button.setText("Checking...")
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        self.status_bar.showMessage(f"Checking {crypto_type} balance...")
+        
+        # Start balance check thread
+        self.checker_thread = BalanceCheckerThread(address, crypto_type)
+        self.checker_thread.balance_checked.connect(self.display_balance)
+        self.checker_thread.finished.connect(self.check_finished)
+        self.checker_thread.start()
+    
+    def display_balance(self, result):
+        """Display balance check results"""
+        self.results_text.clear()
+        
+        if result["success"]:
+            crypto_type = self.crypto_combo.currentText()
+            address = self.address_input.text().strip()
+            
+            self.results_text.append(f"{crypto_type} Balance Check Results")
+            self.results_text.append("=" * 50)
+            self.results_text.append(f"Address: {address}")
+            self.results_text.append(f"Balance: {result['balance']:.8f} {result['unit']}")
+            self.results_text.append(f"Raw Balance: {result['balance_raw']} {result['unit_raw']}")
+            
+            if 'transactions' in result:
+                self.results_text.append(f"Total Transactions: {result['transactions']}")
+            
+            self.results_text.append(f"Data Source: {result['api_source']}")
+            self.results_text.append("-" * 50)
+            
+            if result['balance'] > 0:
+                self.results_text.append("Address has funds!")
+                self.status_bar.showMessage("Balance check completed - Funds found")
+            else:
+                self.results_text.append("Address has zero balance")
+                self.status_bar.showMessage("Balance check completed - No funds")
+        else:
+            self.results_text.append("Balance Check Failed")
+            self.results_text.append("=" * 50)
+            self.results_text.append(f"Error: {result['error']}")
+            self.results_text.append("\n Troubleshooting tips:")
+            self.results_text.append("• Verify that Tor is active on 127.0.0.1:9050")
+            self.results_text.append("• Check your internet connection")
+            self.results_text.append("• Verify the address format is correct")
+            self.results_text.append("• Try again in a few moments")
+            self.status_bar.showMessage("Balance check failed")
+        
+        self.results_text.append(f"\nCheck completed at {QDateTime.currentDateTime().toString()}")
+    
+    def check_finished(self):
+        """Re-enable button when check is finished"""
+        self.check_button.setEnabled(True)
+        self.check_button.setText("Check Balance")
+        self.progress_bar.setVisible(False)
+        self.status_bar.showMessage("Balance check completed")
+    
+    def get_dark_theme(self):
+        """Simple clean theme"""
+        return """
+            QMainWindow {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QWidget {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QLineEdit {
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: white;
+            }
+            QTextEdit {
+                border: 1px solid #ccc;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #4CAF50;
+                border: none;
+                color: white;
+                padding: 8px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QComboBox {
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: white;
+            }
+            QProgressBar {
+                border: 1px solid #ccc;
+                background-color: white;
+            }
+            QProgressBar::chunk {
+                background-color: #f39c12;
+                border-radius: 4px;
+            }
+        """
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("Cyrethium Balance Checker")
+    
+    window = BalanceCheckerApp()
+    window.show()
+    
+    sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()

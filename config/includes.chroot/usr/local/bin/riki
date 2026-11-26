@@ -1,0 +1,799 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import mimetypes
+import os
+import struct
+import time
+from typing import Generator, Iterable, Tuple, Optional
+
+from PIL import Image
+import wave
+import random
+import hashlib
+import sys
+import io
+
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import zlib
+
+MAGIC = b"RIKI"
+VERSION = 1
+SUPPORTED_IMAGE_EXTS = {".png", ".bmp", ".tif", ".tiff", ".tga", ".ppm", ".pnm", ".pgm", ".pbm"}
+SUPPORTED_AUDIO_EXTS = {".wav"}  
+
+
+def guess_image(path: str) -> None:
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in SUPPORTED_IMAGE_EXTS:
+        raise ValueError(f"Unsupported image: {ext}. Use PNG/BMP/TIFF/PPM/TGA.")
+
+
+def guess_audio(path: str) -> None:
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in SUPPORTED_AUDIO_EXTS:
+        raise ValueError(f"Unsupported audio: {ext}. Currently only WAV is supported.")
+
+
+def guess_carrier_type(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower()
+    if ext in SUPPORTED_IMAGE_EXTS:
+        return "image"
+    if ext in SUPPORTED_AUDIO_EXTS:
+        return "audio"
+    raise ValueError(f"Unsupported carrier type: {ext} (PNG/BMP/TIFF/PPM/TGA or WAV)")
+
+
+def read_file_bytes(p: str) -> bytes:
+    with open(p, "rb") as f:
+        return f.read()
+
+
+def write_file_bytes(p: str, data: bytes, overwrite: bool, verbose: bool = False) -> None:
+    if not overwrite and os.path.exists(p):
+        raise FileExistsError(f"Output already exists: {p} (use --overwrite)")
+    
+    output_dir = os.path.dirname(p)
+    if output_dir and not os.path.exists(output_dir):
+        if verbose:
+            print(f"Creating directory: {output_dir}")
+        os.makedirs(output_dir, exist_ok=True)
+    
+    try:
+        with open(p, "wb") as f:
+            f.write(data)
+        if verbose:
+            print(f"Written {len(data)} bytes to {p}")
+    except Exception as e:
+        raise IOError(f"Failed to write file {p}: {e}")
+
+
+def derive_key(passphrase: str, salt: bytes, length: int = 32) -> bytes:
+    kdf = Scrypt(salt=salt, length=length, n=2**14, r=8, p=1)
+    return kdf.derive(passphrase.encode("utf-8"))
+
+
+def encrypt_optional(data: bytes, passphrase: Optional[str]) -> Tuple[bytes, Optional[bytes], Optional[bytes]]:
+    if not passphrase:
+        return data, None, None
+    salt = os.urandom(16)
+    key = derive_key(passphrase, salt)
+    nonce = os.urandom(12)
+    ct = AESGCM(key).encrypt(nonce, data, b"RIKIv1")
+    return ct, salt, nonce
+
+
+def decrypt_optional(data: bytes, passphrase: Optional[str], salt_b64: Optional[str], nonce_b64: Optional[str]) -> bytes:
+    if not passphrase:
+        return data
+    if not salt_b64 or not nonce_b64:
+        raise ValueError("Encrypted payload is missing salt/nonce")
+    salt = base64.b64decode(salt_b64)
+    nonce = base64.b64decode(nonce_b64)
+    key = derive_key(passphrase, salt)
+    return AESGCM(key).decrypt(nonce, data, b"RIKIv1")
+
+
+# ---------------- Bit helpers ----------------
+
+def iter_bits_from_bytes(data: bytes) -> Generator[int, None, None]:
+    for b in data:
+        for i in range(7, -1, -1):
+            yield (b >> i) & 1
+
+
+def read_n_bytes_from_bits(bit_iter: Iterable[int], n: int) -> bytes:
+    out = bytearray()
+    val = 0
+    cnt = 0
+    for bit in bit_iter:
+        val = (val << 1) | (bit & 1)
+        cnt += 1
+        if cnt == 8:
+            out.append(val)
+            if len(out) == n:
+                return bytes(out)
+            val = 0
+            cnt = 0
+    return bytes(out)
+
+
+def embed_payload_into_host_bytes(host: bytearray, payload: bytes, lsb_bits: int) -> int:
+    assert 1 <= lsb_bits <= 4
+    mask = (1 << lsb_bits) - 1
+    inv_mask = 0xFF ^ mask
+    bits = iter_bits_from_bytes(payload)
+    used = 0
+    for i in range(len(host)):
+        v = 0
+        got = 0
+        for _ in range(lsb_bits):
+            try:
+                bit = next(bits)
+            except StopIteration:
+                bit = None
+            if bit is None:
+                break
+            v = (v << 1) | bit
+            got += 1
+        if got == 0:
+            break
+        v = v << (lsb_bits - got)
+        host[i] = (host[i] & inv_mask) | (v & mask)
+        used += 1
+        if got < lsb_bits:
+            break
+    return used
+
+
+def iter_lsb_bits_from_host_bytes(host: bytes, lsb_bits: int) -> Generator[int, None, None]:
+    assert 1 <= lsb_bits <= 4
+    mask = (1 << lsb_bits) - 1
+    for b in host:
+        v = b & mask
+        for s in range(lsb_bits - 1, -1, -1):
+            yield (v >> s) & 1
+
+
+def iter_lsb_bits_from_host_bytes_indices(host: bytes, lsb_bits: int, indices: Iterable[int]) -> Generator[int, None, None]:
+    assert 1 <= lsb_bits <= 4
+    mask = (1 << lsb_bits) - 1
+    for idx in indices:
+        b = host[idx]
+        v = b & mask
+        for s in range(lsb_bits - 1, -1, -1):
+            yield (v >> s) & 1
+
+
+def embed_payload_into_host_bytes_indices(host: bytearray, payload: bytes, lsb_bits: int, indices: Iterable[int]) -> int:
+    assert 1 <= lsb_bits <= 4
+    mask = (1 << lsb_bits) - 1
+    inv_mask = 0xFF ^ mask
+    bits = iter_bits_from_bytes(payload)
+    used = 0
+    for i in indices:
+        v = 0
+        got = 0
+        for _ in range(lsb_bits):
+            try:
+                bit = next(bits)
+            except StopIteration:
+                bit = None
+            if bit is None:
+                break
+            v = (v << 1) | bit
+            got += 1
+        if got == 0:
+            break
+        v = v << (lsb_bits - got)
+        host[i] = (host[i] & inv_mask) | (v & mask)
+        used += 1
+        if got < lsb_bits:
+            break
+    return used
+
+
+def extract_meta_and_body(host_bytes: bytes) -> Tuple[dict, bytes, int]:
+    for lsb in (1, 2, 3, 4):
+        try:
+            meta, header_total = parse_header_only_from_bits(iter_lsb_bits_from_host_bytes(host_bytes, lsb))
+            if int(meta.get("lsb", 0)) != lsb:
+                continue
+            payload_size = int(meta.get("payload_size", -1))
+            if payload_size < 0:
+                continue
+            header_host_bytes = (header_total * 8 + lsb - 1) // lsb
+            if meta.get("scatter"):
+                seed = meta.get("seed")
+                rng = random.Random(int(seed) if seed is not None else 0)
+                indices = list(range(header_host_bytes, len(host_bytes)))
+                rng.shuffle(indices)
+                bit_iter = iter_lsb_bits_from_host_bytes_indices(host_bytes, lsb, indices)
+            else:
+                bit_iter = iter_lsb_bits_from_host_bytes(host_bytes[header_host_bytes:], lsb)
+            body = read_n_bytes_from_bits(bit_iter, payload_size)
+            if len(body) != payload_size:
+                continue
+            return meta, body, lsb
+        except Exception:
+            continue
+    raise ValueError("No hidden data found (lsb 1..4 tested)")
+
+
+# ---------------- Header / Payload ----------------
+
+def build_payload(
+    content: bytes,
+    *,
+    lsb_bits: int,
+    fname: str | None,
+    compress: bool = False,
+    passphrase: Optional[str] = None,
+    carrier: Optional[str] = None,
+    mimetype: Optional[str] = None,
+    scatter: bool = False,
+    seed: Optional[int] = None,
+    add_digest: bool = False,
+) -> bytes:
+    orig_size = len(content)
+    # Digest of the original (plaintext, uncompressed) content
+    sha256_hex = hashlib.sha256(content).hexdigest() if add_digest else None
+    used_compress = False
+    if compress:
+        comp = zlib.compress(content)
+        if len(comp) < len(content):
+            content = comp
+            used_compress = True
+    encrypted = False
+    salt_b64 = None
+    nonce_b64 = None
+    if passphrase:
+        encrypted = True
+        content, salt, nonce = encrypt_optional(content, passphrase)
+        salt_b64 = base64.b64encode(salt).decode("ascii") if salt else None
+        nonce_b64 = base64.b64encode(nonce).decode("ascii") if nonce else None
+    meta = {
+        "v": VERSION,
+        "lsb": int(lsb_bits),
+        "payload_size": int(len(content)),
+        "fname": os.path.basename(fname) if fname else None,
+        "alg": "lsb",
+        "compressed": used_compress,
+        "encrypted": encrypted,
+        "salt": salt_b64,
+        "nonce": nonce_b64,
+        "mimetype": mimetype,
+        "orig_size": int(orig_size),
+        "carrier": carrier,
+        "time": int(time.time()),
+        "scatter": bool(scatter),
+        "seed": int(seed) if seed is not None else None,
+        "sha256": sha256_hex,
+    }
+    meta_json = json.dumps(meta, separators=(",", ":")).encode("utf-8")
+    header = MAGIC + struct.pack(">H", len(meta_json)) + meta_json
+    return header + content
+
+
+def parse_header_only_from_bits(bit_iter: Iterable[int]) -> Tuple[dict, int]:
+    head = read_n_bytes_from_bits(bit_iter, 6)
+    if len(head) < 6 or head[:4] != MAGIC:
+        raise ValueError("Magic header not found")
+    hlen = struct.unpack(">H", head[4:6])[0]
+    meta_bytes = read_n_bytes_from_bits(bit_iter, hlen)
+    if len(meta_bytes) != hlen:
+        raise ValueError("Header incomplete")
+    meta = json.loads(meta_bytes.decode("utf-8"))
+    return meta, 6 + hlen
+
+
+def parse_full_payload_from_bits(bit_iter: Iterable[int]) -> Tuple[dict, bytes]:
+    meta, _ = parse_header_only_from_bits(bit_iter)
+    size = int(meta.get("payload_size", -1))
+    if size < 0:
+        raise ValueError("payload_size missing")
+    body = read_n_bytes_from_bits(bit_iter, size)
+    if len(body) != size:
+        raise ValueError("Payload incomplete")
+    return meta, body
+
+
+def autodetect_header(host_bytes: bytes) -> Tuple[dict, int]:
+    for lsb in (1, 2, 3, 4):
+        try:
+            meta, _ = parse_header_only_from_bits(iter_lsb_bits_from_host_bytes(host_bytes, lsb))
+            if int(meta.get("lsb", 0)) == lsb:
+                return meta, lsb
+        except Exception:
+            continue
+    raise ValueError("No hidden header found")
+
+
+def autodetect_full(host_bytes: bytes) -> Tuple[dict, bytes, int]:
+    for lsb in (1, 2, 3, 4):
+        try:
+            meta, body = parse_full_payload_from_bits(iter_lsb_bits_from_host_bytes(host_bytes, lsb))
+            if int(meta.get("lsb", 0)) == lsb:
+                return meta, body, lsb
+        except Exception:
+            continue
+    raise ValueError("No hidden data found")
+
+
+# ---------------- Image operations ----------------
+
+def image_capacity_bytes(path: str, lsb_bits: int) -> int:
+    guess_image(path)
+    with Image.open(path) as im:
+        im = im.convert("RGB")
+        data_len = len(im.tobytes())
+    return (data_len * lsb_bits) // 8
+
+
+def image_embed(path_in: str, path_out: str, payload: bytes, lsb_bits: int, *, scatter: bool = False, seed: Optional[int] = None) -> None:
+    guess_image(path_in)
+    guess_image(path_out)
+    with Image.open(path_in) as im:
+        im = im.convert("RGB")
+        data = bytearray(im.tobytes())
+        need_bits = len(payload) * 8
+        cap_bits = len(data) * lsb_bits
+        if need_bits > cap_bits:
+            raise ValueError(f"Insufficient capacity. Need {need_bits} bits, capacity {cap_bits} bits")
+        # Split header/body so header stays contiguous
+        header_len = 6 + struct.unpack(">H", payload[4:6])[0]
+        header = payload[:header_len]
+        body = payload[header_len:]
+        embed_payload_into_host_bytes(data, header, lsb_bits)
+        if body:
+            header_host_bytes = (header_len * 8 + lsb_bits - 1) // lsb_bits
+            indices = list(range(header_host_bytes, len(data)))
+            if scatter:
+                rng = random.Random(int(seed) if seed is not None else 0)
+                rng.shuffle(indices)
+            embed_payload_into_host_bytes_indices(data, body, lsb_bits, indices)
+        out_img = Image.frombytes("RGB", im.size, bytes(data))
+        ext = os.path.splitext(path_out)[1].lower()
+        fmt = (
+            "PNG" if ext == ".png" else
+            "BMP" if ext == ".bmp" else
+            "TIFF" if ext in {".tif", ".tiff"} else
+            "PPM" if ext in {".ppm", ".pnm", ".pgm", ".pbm"} else
+            "TGA" if ext == ".tga" else "PNG"
+        )
+        out_img.save(path_out, format=fmt)
+
+
+def image_extract(path_in: str) -> Tuple[dict, bytes]:
+    guess_image(path_in)
+    with Image.open(path_in) as im:
+        im = im.convert("RGB")
+        data = im.tobytes()
+    meta, body, _lsb = extract_meta_and_body(data)
+    return meta, body
+
+
+# ---------------- Audio (WAV/AIFF) operations ----------------
+
+def audio_capacity_bytes(path: str, lsb_bits: int) -> int:
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in SUPPORTED_AUDIO_EXTS:
+        raise ValueError("Only WAV files are supported")
+    
+    try:
+        with wave.open(path, "rb") as w:
+            channels = w.getnchannels()
+            sample_width = w.getsampwidth()
+            framerate = w.getframerate()
+            nframes = w.getnframes()
+            
+            if channels == 0 or sample_width == 0 or framerate == 0:
+                raise ValueError("Invalid WAV file format")
+            
+            frames = w.readframes(nframes)
+            
+            if len(frames) == 0:
+                raise ValueError("Empty audio file")
+                
+            return (len(frames) * lsb_bits) // 8
+    except wave.Error as e:
+        raise ValueError(f"WAV file error: {e}")
+    except Exception as e:
+        raise ValueError(f"Audio processing error: {e}")
+
+
+def audio_embed(path_in: str, path_out: str, payload: bytes, lsb_bits: int, *, scatter: bool = False, seed: Optional[int] = None) -> None:
+    in_ext = os.path.splitext(path_in)[1].lower()
+    out_ext = os.path.splitext(path_out)[1].lower()
+    
+    if in_ext not in SUPPORTED_AUDIO_EXTS:
+        raise ValueError("Input must be WAV")
+    if out_ext not in SUPPORTED_AUDIO_EXTS:
+        raise ValueError("Output must be WAV")
+    
+    try:
+        with wave.open(path_in, "rb") as r:
+            params = r.getparams()
+            nframes = r.getnframes()
+            
+            if params.nchannels == 0 or params.sampwidth == 0 or params.framerate == 0:
+                raise ValueError("Invalid WAV file parameters")
+            
+            if nframes == 0:
+                raise ValueError("Empty WAV file")
+            
+            frames = bytearray(r.readframes(nframes))
+            
+        if len(frames) == 0:
+            raise ValueError("No audio data found")
+        
+        need_bits = len(payload) * 8
+        cap_bits = len(frames) * lsb_bits
+        if need_bits > cap_bits:
+            raise ValueError(f"Insufficient capacity. Need {need_bits} bits, capacity {cap_bits} bits")
+        
+        if len(payload) < 6:
+            raise ValueError("Invalid payload structure")
+        
+        header_len = 6 + struct.unpack(">H", payload[4:6])[0]
+        if header_len > len(payload):
+            raise ValueError("Invalid header length")
+            
+        header = payload[:header_len]
+        body = payload[header_len:]
+        
+        # Embed header (always sequential)
+        embed_payload_into_host_bytes(frames, header, lsb_bits)
+        
+        # Embed body (sequential or scattered)
+        if body:
+            header_host_bytes = (header_len * 8 + lsb_bits - 1) // lsb_bits
+            indices = list(range(header_host_bytes, len(frames)))
+            
+            if scatter:
+                rng = random.Random(int(seed) if seed is not None else 0)
+                rng.shuffle(indices)
+                
+            embed_payload_into_host_bytes_indices(frames, body, lsb_bits, indices)
+        
+        # Write output WAV file
+        with wave.open(path_out, "wb") as w:
+            w.setparams(params)
+            w.writeframes(bytes(frames))
+            
+    except wave.Error as e:
+        raise ValueError(f"WAV processing error: {e}")
+    except struct.error as e:
+        raise ValueError(f"Payload structure error: {e}")
+    except Exception as e:
+        raise ValueError(f"Audio embedding error: {e}")
+
+
+def audio_extract(path_in: str) -> Tuple[dict, bytes]:
+    ext = os.path.splitext(path_in)[1].lower()
+    if ext not in SUPPORTED_AUDIO_EXTS:
+        raise ValueError("Only WAV files are supported")
+    
+    try:
+        with wave.open(path_in, "rb") as r:
+            nframes = r.getnframes()
+            if nframes == 0:
+                raise ValueError("Empty WAV file")
+                
+            frames = r.readframes(nframes)
+            
+        if len(frames) == 0:
+            raise ValueError("No audio data found")
+            
+        meta, body, _lsb = extract_meta_and_body(frames)
+        return meta, body
+        
+    except wave.Error as e:
+        raise ValueError(f"WAV processing error: {e}")
+    except Exception as e:
+        raise ValueError(f"Audio extraction error: {e}")
+
+
+# ---------------- CLI ----------------
+
+def cmd_capacity(args: argparse.Namespace) -> None:
+    try:
+        if not os.path.exists(args.carrier):
+            raise FileNotFoundError(f"Carrier file not found: {args.carrier}")
+        
+        ctype = guess_carrier_type(args.carrier)
+        
+        if args.verbose:
+            print(f"Analyzing carrier: {args.carrier}")
+            print(f"Carrier type: {ctype}")
+            print(f"LSB bits: {args.bits}")
+        
+        if ctype == "image":
+            cap = image_capacity_bytes(args.carrier, args.bits)
+            if args.verbose:
+                with Image.open(args.carrier) as im:
+                    print(f"Image size: {im.size[0]}x{im.size[1]}")
+                    print(f"Image mode: {im.mode}")
+        else:
+            cap = audio_capacity_bytes(args.carrier, args.bits)
+            if args.verbose:
+                with wave.open(args.carrier, "rb") as w:
+                    print(f"Audio channels: {w.getnchannels()}")
+                    print(f"Sample width: {w.getsampwidth()} bytes")
+                    print(f"Frame rate: {w.getframerate()} Hz")
+                    print(f"Frames: {w.getnframes()}")
+        
+        if args.verbose:
+            print(f"Capacity: {cap} bytes ({cap/1024:.2f} KB)")
+        else:
+            print(cap)
+            
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_embed(args: argparse.Namespace) -> None:
+    try:
+        if not os.path.exists(args.input):
+            raise FileNotFoundError(f"Input file not found: {args.input}")
+        if not os.path.exists(args.carrier):
+            raise FileNotFoundError(f"Carrier file not found: {args.carrier}")
+        
+        if args.verbose:
+            print(f"Reading input file: {args.input}")
+        
+        content = read_file_bytes(args.input)
+        input_size = len(content)
+        
+        if args.verbose:
+            print(f"Input size: {input_size} bytes ({input_size/1024:.2f} KB)")
+        
+        mimetype, _ = mimetypes.guess_type(args.input)
+        ctype = guess_carrier_type(args.carrier)
+        
+        if args.verbose:
+            print(f"Carrier type: {ctype}")
+            print(f"MIME type: {mimetype or 'unknown'}")
+            if args.compress:
+                print("Compression: enabled")
+            if args.password:
+                print("Encryption: enabled")
+            if args.scatter:
+                print(f"Scattering: enabled (seed: {args.seed or 0})")
+        
+        if ctype == "image":
+            capacity = image_capacity_bytes(args.carrier, args.bits)
+        else:
+            capacity = audio_capacity_bytes(args.carrier, args.bits)
+        
+        estimated_payload = input_size + 100  # Add overhead estimate
+        if estimated_payload > capacity:
+            raise ValueError(f"Input too large. Estimated {estimated_payload} bytes, capacity {capacity} bytes")
+        
+        if args.verbose:
+            print(f"Building payload...")
+        
+        payload = build_payload(
+            content,
+            lsb_bits=args.bits,
+            fname=args.input,
+            compress=args.compress,
+            passphrase=args.password,
+            carrier=ctype,
+            mimetype=mimetype,
+            scatter=args.scatter,
+            seed=args.seed,
+            add_digest=args.digest,
+        )
+        
+        payload_size = len(payload)
+        if args.verbose:
+            print(f"Payload size: {payload_size} bytes ({payload_size/1024:.2f} KB)")
+            print(f"Capacity usage: {payload_size/capacity*100:.1f}%")
+            print(f"Embedding into carrier...")
+        
+        if ctype == "image":
+            image_embed(args.carrier, args.output, payload, args.bits, scatter=args.scatter, seed=args.seed)
+        else:
+            audio_embed(args.carrier, args.output, payload, args.bits, scatter=args.scatter, seed=args.seed)
+        
+        if args.verbose:
+            print(f"✓ Embed completed successfully")
+            print(f"Output: {args.output}")
+        else:
+            print(f"Embed completed: {args.output}")
+            
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_extract(args: argparse.Namespace) -> None:
+    try:
+        if not os.path.exists(args.stego):
+            raise FileNotFoundError(f"Stego file not found: {args.stego}")
+        
+        if args.verbose:
+            print(f"Analyzing stego file: {args.stego}")
+        
+        ctype = guess_carrier_type(args.stego)
+        
+        if args.verbose:
+            print(f"Carrier type: {ctype}")
+            print("Extracting hidden data...")
+        
+        if ctype == "image":
+            meta, body = image_extract(args.stego)
+        else:
+            meta, body = audio_extract(args.stego)
+        
+        if args.verbose:
+            print(f"Found payload: {len(body)} bytes")
+            print(f"Metadata: {json.dumps(meta, indent=2)}")
+        
+        if meta.get("encrypted"):
+            if not args.password:
+                raise ValueError("This payload is encrypted; please provide -p/--password to decrypt.")
+            if args.verbose:
+                print("Decrypting payload...")
+            body = decrypt_optional(body, args.password, meta.get("salt"), meta.get("nonce"))
+        elif args.password:
+            print("Warning: Payload is not encrypted; provided password will be ignored.")
+        
+        # Decompress if needed
+        if meta.get("compressed"):
+            if args.verbose:
+                print("Decompressing payload...")
+            import zlib as _z
+            original_size = len(body)
+            body = _z.decompress(body)
+            if args.verbose:
+                print(f"Decompressed: {original_size} -> {len(body)} bytes")
+        
+        # Verify digest if present
+        if meta.get("sha256"):
+            if args.verbose:
+                print("Verifying SHA-256 digest...")
+            calc = hashlib.sha256(body).hexdigest()
+            if calc == meta.get("sha256"):
+                if args.verbose:
+                    print("✓ SHA-256 digest verified")
+                else:
+                    print("SHA-256 digest OK")
+            else:
+                print("Warning: SHA-256 digest mismatch")
+        
+        # Determine output path
+        out = args.output
+        if not out:
+            fname = meta.get("fname") or "extracted.bin"
+            root = os.path.dirname(args.stego)
+            out = os.path.join(root, f"extracted_{fname}")
+        
+        if args.verbose:
+            print(f"Writing to: {out}")
+        
+        write_file_bytes(out, body, overwrite=args.overwrite, verbose=args.verbose)
+        
+        if args.verbose:
+            print(f"✓ Extract completed successfully")
+            print(f"Output: {out} ({len(body)} bytes)")
+        else:
+            print(f"Extract completed: {out}")
+            
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_analyze(args: argparse.Namespace) -> None:
+    try:
+        ctype = guess_carrier_type(args.stego)
+        
+        if ctype == "image":
+            with Image.open(args.stego) as im:
+                im = im.convert("RGB")
+                data = im.tobytes()
+                if len(data) == 0:
+                    raise ValueError("Empty image data")
+        else:
+            # Audio file (WAV only)
+            with wave.open(args.stego, "rb") as r:
+                nframes = r.getnframes()
+                if nframes == 0:
+                    raise ValueError("Empty audio file")
+                data = r.readframes(nframes)
+                if len(data) == 0:
+                    raise ValueError("No audio data found")
+    except Exception as e:
+        raise ValueError(f"Failed to read carrier file: {e}")
+    # Header-only
+    header_len = None
+    detected_lsb = None
+    meta_out = None
+    for lsb in (1, 2, 3, 4):
+        try:
+            meta, hbytes = parse_header_only_from_bits(iter_lsb_bits_from_host_bytes(data, lsb))
+            if int(meta.get("lsb", 0)) == lsb:
+                header_len = hbytes
+                detected_lsb = lsb
+                meta_out = meta
+                break
+        except Exception:
+            continue
+    if not meta_out:
+        raise ValueError("Header not found")
+    used_bytes = header_len + int(meta_out.get("payload_size", 0))
+    cap_bytes = image_capacity_bytes(args.stego, detected_lsb) if ctype == "image" else audio_capacity_bytes(args.stego, detected_lsb)
+    info = {
+        "carrier_type": ctype,
+        "detected_lsb": detected_lsb,
+        "header_bytes": header_len,
+        "used_bytes": used_bytes,
+        "capacity_bytes": cap_bytes,
+        "meta": meta_out,
+    }
+    txt = json.dumps(info, ensure_ascii=False, indent=2 if args.pretty else None, separators=(",", ": ") if args.pretty else (",", ":"))
+    print(txt)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="riki", description="Riki Stego CLI (PNG/BMP/TIFF/PPM/TGA & WAV, LSB)")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s1 = sub.add_parser("capacity", help="Print carrier capacity (bytes)")
+    s1.add_argument("-c", "--carrier", required=True, help="Carrier (PNG/BMP/TIFF/PPM/TGA or WAV)")
+    s1.add_argument("-b", "--bits", type=int, default=1, choices=[1, 2, 3, 4], help="LSB bits per host byte")
+    s1.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    s1.set_defaults(func=cmd_capacity)
+
+    s2 = sub.add_parser("embed", help="Embed payload into carrier")
+    s2.add_argument("-c", "--carrier", required=True, help="Input carrier (PNG/BMP/TIFF/PPM/TGA or WAV)")
+    s2.add_argument("-i", "--input", required=True, help="File to hide")
+    s2.add_argument("-o", "--output", required=True, help="Output stego (PNG/BMP/TIFF/PPM/TGA or WAV)")
+    s2.add_argument("-b", "--bits", type=int, default=1, choices=[1, 2, 3, 4], help="LSB bits per host byte")
+    s2.add_argument("--compress", action="store_true", help="Compress payload with zlib if it helps")
+    s2.add_argument("-p", "--password", help="Password for AES-GCM encryption")
+    s2.add_argument("--scatter", action="store_true", help="Scatter payload body across host bytes (header remains contiguous)")
+    s2.add_argument("--seed", type=int, default=None, help="Seed for scattering (default 0 if --scatter is used)")
+    s2.add_argument("--digest", action="store_true", help="Store SHA-256 digest of original plaintext for verification on extract")
+    s2.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    s2.set_defaults(func=cmd_embed)
+
+    s3 = sub.add_parser("extract", help="Extract hidden payload")
+    s3.add_argument("-s", "--stego", required=True, help="Stego (PNG/BMP/TIFF/PPM/TGA or WAV)")
+    s3.add_argument("-o", "--output", required=False, help="Output file path")
+    s3.add_argument("--overwrite", action="store_true", help="Overwrite output if exists")
+    s3.add_argument("-p", "--password", help="Password to decrypt (if encrypted)")
+    s3.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    s3.set_defaults(func=cmd_extract)
+
+    s4 = sub.add_parser("analyze", help="Analyze stego and print header/meta")
+    s4.add_argument("-s", "--stego", required=True, help="Stego (PNG/BMP/TIFF/PPM/TGA or WAV)")
+    s4.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
+    s4.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    s4.set_defaults(func=cmd_analyze)
+
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        args.func(args)
+        return 0
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+

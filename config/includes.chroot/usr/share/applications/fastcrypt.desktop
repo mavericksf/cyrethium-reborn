@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=FastCrypt
+Comment=Simple and easy file encryption tool
+Comment[tr]=Basit ve kolay bir dosya şifreleme aracı
+Comment[es]=Herramienta de cifrado de archivos simple y fácil
+Comment[fr]=Outil de chiffrement de fichiers simple et facile
+Comment[de]=Einfaches und leichtes Dateiverschlüsselungstool
+Comment[ar]=أداة تشفير الملفات البسيطة والسهلة
+Comment[ru]=Простой и легкий инструмент шифрования файлов
+Comment[zh]=简单易用的文件加密工具
+Comment[ja]=シンプルで簡単なファイル暗号化ツール
+Comment[ko]=간단하고 쉬운 파일 암호화 도구
+Comment[pt]=Ferramenta de criptografia de arquivos simples e fácil
+Comment[it]=Strumento di crittografia dei file semplice e facile
+Comment[nl]=Eenvoudige en gemakkelijke bestandsversleutelingstool
+Comment[sv]=Enkelt och lätt filkrypteringsverktyg
+Comment[pl]=Proste i łatwe narzędzie do szyfrowania plików
+Exec=fastcrypt
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/fastcrypt.png
+Categories=Encryption;
+StartupNotify=false

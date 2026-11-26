@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=NetSecDragon Toolkit
+Comment=Unified network security analysis suite with DDoS, port scan, MITM and WiFi deauth detection
+Comment[tr]=DDoS, port tarama, MITM ve WiFi deauth tespiti içeren birleşik ağ güvenlik analiz paketi
+Comment[es]=Suite unificado de análisis de seguridad de red con detección de DDoS, escaneo de puertos, MITM y deauth WiFi
+Comment[fr]=Suite d'analyse de sécurité réseau unifiée avec détection DDoS, scan de ports, MITM et deauth WiFi
+Comment[de]=Einheitliche Netzwerksicherheitsanalyse-Suite mit DDoS-, Port-Scan-, MITM- und WiFi-Deauth-Erkennung
+Comment[ar]=مجموعة تحليل أمان الشبكة الموحدة مع اكتشاف DDoS وفحص المنافذ وMITM وإلغاء المصادقة WiFi
+Comment[ru]=Единый комплекс анализа сетевой безопасности с обнаружением DDoS, сканирования портов, MITM и деаутентификации WiFi
+Comment[zh]=统一网络安全分析套件，具有DDoS、端口扫描、MITM和WiFi取消认证检测功能
+Comment[ja]=DDoS、ポートスキャン、MITM、WiFi認証解除検出を備えた統合ネットワークセキュリティ分析スイート
+Comment[ko]=DDoS, 포트 스캔, MITM 및 WiFi 인증 해제 탐지 기능을 갖춘 통합 네트워크 보안 분석 도구
+Comment[pt]=Suíte unificada de análise de segurança de rede com detecção de DDoS, varredura de portas, MITM e deauth WiFi
+Comment[it]=Suite unificata di analisi della sicurezza di rete con rilevamento DDoS, scansione porte, MITM e deauth WiFi
+Comment[nl]=Geïntegreerde netwerkbeveiligingsanalyse-suite met DDoS-, poort-scan-, MITM- en WiFi-deauth-detectie
+Comment[sv]=Enhetlig nätverkssäkerhetsanalyssvit med DDoS-, portskanning-, MITM- och WiFi-deauth-detektering
+Comment[pl]=Ujednolicony pakiet analizy bezpieczeństwa sieci z wykrywaniem DDoS, skanowaniem portów, MITM i deauth WiFi
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/netsecdragon; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/antimitm.png
+Categories=NetworkSec;
+StartupNotify=false

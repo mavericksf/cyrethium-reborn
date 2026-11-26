@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=bmon
+Comment=Bandwidth monitor
+Comment[tr]=Ağ bant genişliği izleyicisi
+Comment[es]=Monitor de ancho de banda
+Comment[fr]=Moniteur de bande passante
+Comment[de]=Bandbreiten-Monitor
+Comment[ar]=مراقب عرض النطاق الترددي
+Comment[ru]=Монитор пропускной способности
+Comment[zh]=带宽监视器
+Comment[ja]=帯域幅モニター
+Comment[ko]=대역폭 모니터
+Comment[pt]=Monitor de largura de banda
+Comment[it]=Monitor della larghezza di banda
+Comment[nl]=Bandbreedtemonitor
+Comment[sv]=Bandbreddsmonitor
+Comment[pl]=Monitor przepustowości
+Exec=mate-terminal -- bash -c "bmon; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=NetworkSec;
+StartupNotify=false

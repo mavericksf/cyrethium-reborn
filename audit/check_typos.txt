@@ -1,0 +1,2 @@
+/home/maverick/Documentos/Estudo/cyrethium-reborn/config/includes.chroot/usr/share/applications/addres-validator.desktop:19:Exec=addres-validator
+/home/maverick/Documentos/Estudo/cyrethium-reborn/config/includes.chroot/usr/share/applications/cyrethium-dnscrypt.desktop:19:Exec=mate-terminal -- bash -c "/usr/local/bin/cryethium-dnscrypt; exec bash"

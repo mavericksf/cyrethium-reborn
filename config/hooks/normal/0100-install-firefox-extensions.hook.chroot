@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+UBLOCK_URL="https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+NOSCRIPT_URL="https://addons.mozilla.org/firefox/downloads/latest/noscript/latest.xpi"
+
+for profile in /etc/skel/.mozilla/firefox/amn83q7x.amnesic /etc/skel/.mozilla/firefox/scr83q7x.hardened; do
+    mkdir -p "$profile/extensions"
+    curl -fsSL "$UBLOCK_URL" -o "$profile/extensions/uBlock0@raymondhill.net.xpi"
+    curl -fsSL "$NOSCRIPT_URL" -o "$profile/extensions/{73a6fe31-595d-460b-a920-fcc0f8843232}.xpi"
+done

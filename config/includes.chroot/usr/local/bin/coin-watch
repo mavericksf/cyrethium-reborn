@@ -1,0 +1,991 @@
+#!/usr/bin/env python3
+import os
+import sys
+import json
+import time
+import locale
+import requests
+from tabulate import tabulate
+from colorama import init, Fore, Style
+import click
+import datetime
+from datetime import datetime, timedelta
+import threading
+import configparser
+import hashlib
+import base64
+from pathlib import Path
+import subprocess
+import signal
+
+# Author: root0emir
+# Cyrethium Cryptocurrency Tracker
+
+# Colorama init for color support
+init()
+
+# Try to set system locale for better encoding support
+try:
+    locale.setlocale(locale.LC_ALL, '')
+except:
+    pass
+    
+# Ensure stdout can handle UTF-8
+if sys.stdout.encoding != 'utf-8':
+    try:
+        # For Windows, try to set console to utf-8 mode
+        if os.name == 'nt':
+            os.system('chcp 65001')
+    except:
+        # If that fails, we'll use ASCII replacement characters
+        pass
+
+class CryptoTracker:
+    def __init__(self):
+        self.api_url = "https://api.coingecko.com/api/v3"
+        self.update_interval = 60  # Default refresh seconds
+        self.watchlist = []  # User's cryptocurrency watchlist
+        self.alerts = {}  # Price alerts
+        self.portfolio = {}  # User's portfolio holdings
+        self.config_dir = Path.home() / ".config" / "cyrethium-coinwatch"
+        self.config_file = self.config_dir / "config.json"
+        self.fiat_currency = "usd"  # Default currency
+        self.use_proxy = False  # Privacy feature for Tor/proxy
+        self.proxy_url = "socks5://127.0.0.1:9050"  # Default Tor proxy
+        self.alert_thread = None
+        self.alert_running = False
+        
+        # Create config directory
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Load configuration
+        self.load_config()
+        
+        # Setup session with proxy if enabled
+        self.session = requests.Session()
+        if self.use_proxy:
+            self.setup_proxy()
+        
+    def setup_proxy(self):
+        """Setup proxy for privacy (Tor support)"""
+        try:
+            proxies = {
+                'http': self.proxy_url,
+                'https': self.proxy_url
+            }
+            self.session.proxies.update(proxies)
+            print(f"{Fore.GREEN}Proxy enabled: {self.proxy_url}{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Proxy setup failed: {e}{Style.RESET_ALL}")
+            self.use_proxy = False
+    
+    def load_config(self):
+        """Load configuration from file"""
+        try:
+            if self.config_file.exists():
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    self.watchlist = config.get('watchlist', [])
+                    self.alerts = config.get('alerts', {})
+                    self.portfolio = config.get('portfolio', {})
+                    self.update_interval = config.get('update_interval', 60)
+                    self.fiat_currency = config.get('fiat_currency', 'usd')
+                    self.use_proxy = config.get('use_proxy', False)
+                    self.proxy_url = config.get('proxy_url', 'socks5://127.0.0.1:9050')
+        except Exception as e:
+            print(f"{Fore.YELLOW}Config load error: {e}{Style.RESET_ALL}")
+    
+    def save_config(self):
+        """Save configuration to file"""
+        try:
+            config = {
+                'watchlist': self.watchlist,
+                'alerts': self.alerts,
+                'portfolio': self.portfolio,
+                'update_interval': self.update_interval,
+                'fiat_currency': self.fiat_currency,
+                'use_proxy': self.use_proxy,
+                'proxy_url': self.proxy_url
+            }
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            print(f"{Fore.RED}Config save error: {e}{Style.RESET_ALL}")
+    
+    def clear_screen(self):
+        """Clear terminal screen"""
+        os.system('cls' if os.name == 'nt' else 'clear')
+        
+    def print_banner(self):
+        """Print CoinWatcher banner"""
+        print(f"{Fore.CYAN}")
+        print("⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣴⣶⣾⣿⣿⣿⣿⣷⣶⣦⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀")
+        print("⠀⠀⠀⠀⠀⣠⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⣄⠀⠀⠀⠀⠀")
+        print("⠀⠀⠀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄⠀⠀⠀")
+        print("⠀⠀⣴⣿⣿⣿⣿⣿⣿⣿⠟⠿⠿⡿⠀⢰⣿⠁⢈⣿⣿⣿⣿⣿⣿⣿⣿⣦⠀⠀")
+        print("⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣤⣄⠀⠀⠀⠈⠉⠀⠸⠿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀")
+        print("⢰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⠀⠀⢠⣶⣶⣤⡀⠀⠈⢻⣿⣿⣿⣿⣿⣿⣿⡆")
+        print("⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠀⠀⠼⣿⣿⡿⠃⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣷")
+        print("⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⠀⠀⢀⣀⣀⠀⠀⠀⠀⢴⣿⣿⣿⣿⣿⣿⣿⣿⣿")
+        print("⢿⣿⣿⣿⣿⣿⣿⣿⢿⣿⠁⠀⠀⣼⣿⣿⣿⣦⠀⠀⠈⢻⣿⣿⣿⣿⣿⣿⣿⡿")
+        print("⠸⣿⣿⣿⣿⣿⣿⣏⠀⠀⠀⠀⠀⠛⠛⠿⠟⠋⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⣿⠇")
+        print("⠀⢻⣿⣿⣿⣿⣿⣿⣿⣿⠇⠀⣤⡄⠀⣀⣀⣀⣀⣠⣾⣿⣿⣿⣿⣿⣿⣿⡟⠀")
+        print("⠀⠀⠻⣿⣿⣿⣿⣿⣿⣿⣄⣰⣿⠁⢀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠀⠀")
+        print("⠀⠀⠀⠙⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀")
+        print("⠀⠀⠀⠀⠀⠙⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠋⠀⠀⠀⠀⠀")
+        print(f"⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠻⠿⢿⣿⣿⣿⣿⡿⠿⠟⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀{Style.RESET_ALL}")
+        print()
+        
+    def get_crypto_data(self, per_page=20, use_watchlist=False):
+        """Fetch cryptocurrency data from CoinGecko API"""
+        try:
+            if use_watchlist and self.watchlist:
+                # Get specific coins from watchlist
+                coin_ids = ','.join(self.watchlist)
+                url = f"{self.api_url}/coins/markets"
+                params = {
+                    "vs_currency": self.fiat_currency,
+                    "ids": coin_ids,
+                    "order": "market_cap_desc",
+                    "sparkline": False,
+                    "price_change_percentage": "24h,7d,30d"
+                }
+            else:
+                # Get top cryptocurrencies by market cap
+                url = f"{self.api_url}/coins/markets"
+                params = {
+                    "vs_currency": self.fiat_currency,
+                    "order": "market_cap_desc",
+                    "per_page": per_page,
+                    "page": 1,
+                    "sparkline": False,
+                    "price_change_percentage": "24h,7d,30d"
+                }
+            
+            response = self.session.get(url, params=params, timeout=10)
+            if response.status_code != 200:
+                print(f"{Fore.RED}Error fetching data: {response.status_code}{Style.RESET_ALL}")
+                return None
+                
+            return response.json()
+        
+        except Exception as e:
+            print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+            return None
+    
+    def get_market_overview(self):
+        """Get global cryptocurrency market overview"""
+        try:
+            url = f"{self.api_url}/global"
+            response = self.session.get(url, timeout=10)
+            if response.status_code == 200:
+                return response.json()['data']
+        except Exception as e:
+            print(f"{Fore.RED}Market overview error: {e}{Style.RESET_ALL}")
+        return None
+    
+    def get_historical_data(self, coin_id, days=30):
+        """Get historical price data for a coin"""
+        try:
+            url = f"{self.api_url}/coins/{coin_id}/market_chart"
+            params = {
+                'vs_currency': self.fiat_currency,
+                'days': days
+            }
+            response = self.session.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            print(f"{Fore.RED}Historical data error: {e}{Style.RESET_ALL}")
+        return None
+    
+    def get_trending_coins(self):
+        """Get trending cryptocurrencies"""
+        try:
+            url = f"{self.api_url}/search/trending"
+            response = self.session.get(url, timeout=10)
+            if response.status_code == 200:
+                return response.json()['coins']
+        except Exception as e:
+            print(f"{Fore.RED}Trending coins error: {e}{Style.RESET_ALL}")
+        return None
+    
+    def get_defi_data(self):
+        """Get DeFi market data"""
+        try:
+            url = f"{self.api_url}/global/decentralized_finance_defi"
+            response = self.session.get(url, timeout=10)
+            if response.status_code == 200:
+                return response.json()['data']
+        except Exception as e:
+            print(f"{Fore.RED}DeFi data error: {e}{Style.RESET_ALL}")
+        return None
+            
+    def display_data(self, data, title="Top 20 Cryptocurrencies by Market Cap", show_detailed=False):
+        """Display cryptocurrency data in a formatted table"""
+        if not data:
+            return
+            
+        table_data = []
+        for coin in data:
+            price = coin['current_price']
+            change_24h = coin['price_change_percentage_24h']
+            
+            # Colorize price change with ASCII characters
+            if change_24h > 0:
+                change_display = f"{Fore.GREEN}+ {change_24h:.2f}%{Style.RESET_ALL}"
+            else:
+                change_display = f"{Fore.RED}- {abs(change_24h):.2f}%{Style.RESET_ALL}"
+                
+            market_cap = coin['market_cap'] / 1_000_000_000  # Convert to billions
+            
+            table_data.append([
+                coin['market_cap_rank'],
+                f"{Fore.CYAN}{coin['name']}{Style.RESET_ALL}",
+                f"{Fore.YELLOW}{coin['symbol'].upper()}{Style.RESET_ALL}",
+                f"${price:,.2f}",
+                change_display,
+                f"${market_cap:.2f}B",
+                f"${coin['total_volume']:,.0f}"
+            ])
+            
+        headers = ["#", "Name", "Symbol", "Price (USD)", "24h Change", "Market Cap", "24h Volume"]
+        table = tabulate(table_data, headers=headers, tablefmt="simple")
+        
+        # Clear screen and show updated data
+        self.clear_screen()
+        print(f"\n{Fore.MAGENTA}{title}{Style.RESET_ALL}")
+        print(f"Last Updated: {Fore.BLUE}{time.strftime('%Y-%m-%d %H:%M:%S')}{Style.RESET_ALL}")
+        print(f"\n{table}\n")
+        
+    def live_tracker(self, interval=None, use_watchlist=False):
+        """Start live tracking with specified refresh interval"""
+        if interval:
+            self.update_interval = interval
+            
+        tracker_type = "watchlist" if use_watchlist else "top cryptocurrencies"
+        print(f"{Fore.CYAN}Starting {tracker_type} tracker. Press Ctrl+C to exit.{Style.RESET_ALL}")
+        
+        try:
+            while True:
+                data = self.get_crypto_data(use_watchlist=use_watchlist)
+                title = "Watchlist Cryptocurrencies" if use_watchlist else "Top 20 Cryptocurrencies by Market Cap"
+                self.display_data(data, title)
+                print(f"Refreshing in {self.update_interval} seconds. Press Ctrl+C to exit.")
+                time.sleep(self.update_interval)
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Exiting crypto tracker. Goodbye!{Style.RESET_ALL}")
+            sys.exit(0)
+
+    def main_menu(self):
+        """Main menu interface"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            print(f"{Fore.YELLOW}Cryptocurrency Tracking Options:{Style.RESET_ALL}")
+            print()
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} View Top Cryptocurrencies")
+            print(f"{Fore.GREEN}2.{Style.RESET_ALL} Live Price Tracker")
+            print(f"{Fore.GREEN}3.{Style.RESET_ALL} Manage Watchlist")
+            print(f"{Fore.GREEN}4.{Style.RESET_ALL} Portfolio Tracker")
+            print(f"{Fore.GREEN}5.{Style.RESET_ALL} Price Alerts")
+            print(f"{Fore.GREEN}6.{Style.RESET_ALL} Search Cryptocurrency")
+            print(f"{Fore.GREEN}7.{Style.RESET_ALL} Market Overview")
+            print(f"{Fore.GREEN}8.{Style.RESET_ALL} Historical Data")
+            print(f"{Fore.GREEN}9.{Style.RESET_ALL} Trending Coins")
+            print(f"{Fore.GREEN}10.{Style.RESET_ALL} DeFi Dashboard")
+            print(f"{Fore.GREEN}11.{Style.RESET_ALL} Settings")
+            print(f"{Fore.GREEN}0.{Style.RESET_ALL} Exit")
+            print()
+            
+            choice = input(f"{Fore.CYAN}Select option: {Style.RESET_ALL}")
+            
+            try:
+                if choice == '1':
+                    data = self.get_crypto_data(per_page=50)
+                    if data:
+                        self.clear_screen()
+                        self.display_data(data, "Top 50 Cryptocurrencies", show_detailed=True)
+                    input("Press Enter to continue...")
+                    
+                elif choice == '2':
+                    submenu = input(f"{Fore.CYAN}Track: (1) Top coins or (2) Watchlist? {Style.RESET_ALL}")
+                    if submenu == '1':
+                        self.live_tracker(use_watchlist=False)
+                    elif submenu == '2':
+                        if self.watchlist:
+                            self.live_tracker(use_watchlist=True)
+                        else:
+                            print(f"{Fore.YELLOW}Watchlist is empty. Please add coins first.{Style.RESET_ALL}")
+                            input("Press Enter to continue...")
+                    
+                elif choice == '3':
+                    self.manage_watchlist()
+                    
+                elif choice == '4':
+                    self.portfolio_menu()
+                    
+                elif choice == '5':
+                    self.manage_alerts()
+                    
+                elif choice == '6':
+                    query = input(f"{Fore.CYAN}Enter cryptocurrency name or symbol: {Style.RESET_ALL}")
+                    results = self.search_crypto(query)
+                    if results:
+                        print(f"\n{Fore.GREEN}Search Results:")
+                        for i, coin in enumerate(results[:10], 1):
+                            print(f"{i}. {coin['name']} ({coin['symbol']}) - {coin['id']}")
+                        
+                        try:
+                            selection = int(input(f"\n{Fore.CYAN}View details for (1-{min(10, len(results))}): {Style.RESET_ALL}")) - 1
+                            if 0 <= selection < len(results):
+                                self.display_coin_details(results[selection]['id'])
+                        except ValueError:
+                            pass
+                    else:
+                        print(f"{Fore.RED}No results found{Style.RESET_ALL}")
+                    input("Press Enter to continue...")
+                    
+                elif choice == '7':
+                    self.display_market_overview()
+                    input("Press Enter to continue...")
+                    
+                elif choice == '8':
+                    self.historical_data_menu()
+                    
+                elif choice == '9':
+                    self.display_trending_coins()
+                    input("Press Enter to continue...")
+                    
+                elif choice == '10':
+                    self.display_defi_dashboard()
+                    input("Press Enter to continue...")
+                    
+                elif choice == '11':
+                    self.settings_menu()
+                    
+                elif choice == '0':
+                    print(f"{Fore.GREEN}Goodbye!{Style.RESET_ALL}")
+                    sys.exit(0)
+                    
+                else:
+                    print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                    time.sleep(1)
+                    
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}Returning to menu...{Style.RESET_ALL}")
+                time.sleep(1)
+            except Exception as e:
+                print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+    
+    def portfolio_menu(self):
+        """Portfolio management menu"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            print(f"{Fore.YELLOW}Portfolio Management{Style.RESET_ALL}")
+            print("━" * 40)
+            
+            if self.portfolio:
+                total_value = 0
+                print(f"{Fore.GREEN}Current Holdings:{Style.RESET_ALL}")
+                for coin_id, holding in self.portfolio.items():
+                    amount = holding['amount']
+                    avg_price = holding['avg_price']
+                    
+                    # Get current price
+                    data = self.get_crypto_data(per_page=1)
+                    current_price = 0
+                    for coin in data or []:
+                        if coin['id'] == coin_id:
+                            current_price = coin['current_price']
+                            break
+                    
+                    current_value = amount * current_price
+                    cost_basis = amount * avg_price
+                    pnl = current_value - cost_basis
+                    pnl_percent = (pnl / cost_basis * 100) if cost_basis > 0 else 0
+                    
+                    pnl_color = Fore.GREEN if pnl >= 0 else Fore.RED
+                    pnl_symbol = "+" if pnl >= 0 else ""
+                    
+                    print(f"• {coin_id}: {amount:.6f} @ ${avg_price:.2f} avg")
+                    print(f"  Current: ${current_price:.2f} | Value: ${current_value:.2f}")
+                    print(f"  P&L: {pnl_color}{pnl_symbol}${pnl:.2f} ({pnl_symbol}{pnl_percent:.2f}%){Style.RESET_ALL}")
+                    print()
+                    total_value += current_value
+                
+                print(f"Total Portfolio Value: {Fore.CYAN}${total_value:.2f}{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}Portfolio is empty{Style.RESET_ALL}")
+            
+            print()
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} Add Holding")
+            print(f"{Fore.GREEN}2.{Style.RESET_ALL} Remove Holding")
+            print(f"{Fore.GREEN}3.{Style.RESET_ALL} Update Holding")
+            print(f"{Fore.GREEN}4.{Style.RESET_ALL} Export Portfolio")
+            print(f"{Fore.GREEN}5.{Style.RESET_ALL} Import Portfolio")
+            print(f"{Fore.GREEN}0.{Style.RESET_ALL} Back to main menu")
+            
+            choice = input(f"\n{Fore.CYAN}Select option: {Style.RESET_ALL}")
+            
+            if choice == '1':
+                coin_id = input(f"{Fore.CYAN}Enter coin ID: {Style.RESET_ALL}")
+                try:
+                    amount = float(input(f"{Fore.CYAN}Enter amount: {Style.RESET_ALL}"))
+                    avg_price = float(input(f"{Fore.CYAN}Enter average price: ${Style.RESET_ALL}"))
+                    
+                    if coin_id in self.portfolio:
+                        # Update existing holding
+                        existing = self.portfolio[coin_id]
+                        total_amount = existing['amount'] + amount
+                        total_cost = (existing['amount'] * existing['avg_price']) + (amount * avg_price)
+                        new_avg_price = total_cost / total_amount
+                        
+                        self.portfolio[coin_id] = {
+                            'amount': total_amount,
+                            'avg_price': new_avg_price
+                        }
+                    else:
+                        self.portfolio[coin_id] = {
+                            'amount': amount,
+                            'avg_price': avg_price
+                        }
+                    
+                    self.save_config()
+                    print(f"{Fore.GREEN}Holding added/updated successfully{Style.RESET_ALL}")
+                except ValueError:
+                    print(f"{Fore.RED}Invalid input{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '2':
+                if self.portfolio:
+                    coin_id = input(f"{Fore.CYAN}Enter coin ID to remove: {Style.RESET_ALL}")
+                    if coin_id in self.portfolio:
+                        del self.portfolio[coin_id]
+                        self.save_config()
+                        print(f"{Fore.GREEN}Holding removed{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}Holding not found{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}Portfolio is empty{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '0':
+                break
+            else:
+                print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                time.sleep(1)
+                
+    def settings_menu(self):
+        """Settings configuration menu"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            print(f"{Fore.YELLOW}Settings{Style.RESET_ALL}")
+            print("━" * 40)
+            print(f"Update interval: {Fore.GREEN}{self.update_interval} seconds{Style.RESET_ALL}")
+            print(f"Currency: {Fore.CYAN}{self.fiat_currency.upper()}{Style.RESET_ALL}")
+            print(f"Proxy: {Fore.GREEN if self.use_proxy else Fore.RED}{'Enabled' if self.use_proxy else 'Disabled'}{Style.RESET_ALL}")
+            if self.use_proxy:
+                print(f"Proxy URL: {Fore.BLUE}{self.proxy_url}{Style.RESET_ALL}")
+            print()
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} Change update interval")
+            print(f"{Fore.GREEN}2.{Style.RESET_ALL} Change currency")
+            print(f"{Fore.GREEN}3.{Style.RESET_ALL} Privacy settings (Tor/Proxy)")
+            print(f"{Fore.GREEN}4.{Style.RESET_ALL} Export configuration")
+            print(f"{Fore.GREEN}5.{Style.RESET_ALL} Import configuration")
+            print(f"{Fore.GREEN}6.{Style.RESET_ALL} Reset to defaults")
+            print(f"{Fore.GREEN}0.{Style.RESET_ALL} Back to main menu")
+            
+            choice = input(f"\n{Fore.CYAN}Select option: {Style.RESET_ALL}")
+            
+            if choice == '1':
+                try:
+                    new_interval = int(input(f"{Fore.CYAN}Enter new interval (10-3600 seconds): {Style.RESET_ALL}"))
+                    if 10 <= new_interval <= 3600:
+                        self.update_interval = new_interval
+                        self.save_config()
+                        print(f"{Fore.GREEN}Update interval changed to {new_interval} seconds{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}Invalid interval. Must be between 10-3600 seconds{Style.RESET_ALL}")
+                except ValueError:
+                    print(f"{Fore.RED}Invalid input{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '2':
+                print(f"\n{Fore.CYAN}Available currencies:{Style.RESET_ALL}")
+                currencies = ['usd', 'eur', 'btc', 'eth', 'gbp', 'jpy', 'cad', 'aud', 'chf', 'cny']
+                for i, curr in enumerate(currencies, 1):
+                    current = " (current)" if curr == self.fiat_currency else ""
+                    print(f"{i:2d}. {curr.upper()}{current}")
+                
+                try:
+                    selection = int(input(f"\n{Fore.CYAN}Select currency (1-{len(currencies)}): {Style.RESET_ALL}")) - 1
+                    if 0 <= selection < len(currencies):
+                        self.fiat_currency = currencies[selection]
+                        self.save_config()
+                        print(f"{Fore.GREEN}Currency changed to {self.fiat_currency.upper()}{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}Invalid selection{Style.RESET_ALL}")
+                except ValueError:
+                    print(f"{Fore.RED}Invalid input{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '3':
+                print(f"\n{Fore.CYAN}Privacy Settings (Tor/Proxy Support){Style.RESET_ALL}")
+                print("━" * 40)
+                print(f"Current status: {Fore.GREEN if self.use_proxy else Fore.RED}{'Enabled' if self.use_proxy else 'Disabled'}{Style.RESET_ALL}")
+                if self.use_proxy:
+                    print(f"Proxy URL: {Fore.BLUE}{self.proxy_url}{Style.RESET_ALL}")
+                
+                print(f"\n{Fore.GREEN}1.{Style.RESET_ALL} Enable Tor proxy (socks5://127.0.0.1:9050)")
+                print(f"{Fore.GREEN}2.{Style.RESET_ALL} Custom proxy URL")
+                print(f"{Fore.GREEN}3.{Style.RESET_ALL} Disable proxy")
+                print(f"{Fore.GREEN}0.{Style.RESET_ALL} Back")
+                
+                proxy_choice = input(f"\n{Fore.CYAN}Select option: {Style.RESET_ALL}")
+                
+                if proxy_choice == '1':
+                    self.use_proxy = True
+                    self.proxy_url = "socks5://127.0.0.1:9050"
+                    self.setup_proxy()
+                    self.save_config()
+                    print(f"{Fore.GREEN}Tor proxy enabled{Style.RESET_ALL}")
+                elif proxy_choice == '2':
+                    proxy_url = input(f"{Fore.CYAN}Enter proxy URL (e.g., socks5://127.0.0.1:9050): {Style.RESET_ALL}")
+                    if proxy_url:
+                        self.use_proxy = True
+                        self.proxy_url = proxy_url
+                        self.setup_proxy()
+                        self.save_config()
+                        print(f"{Fore.GREEN}Custom proxy enabled{Style.RESET_ALL}")
+                elif proxy_choice == '3':
+                    self.use_proxy = False
+                    self.session.proxies.clear()
+                    self.save_config()
+                    print(f"{Fore.GREEN}Proxy disabled{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '4':
+                filename = f"crypto-config-{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                try:
+                    config = {
+                        'watchlist': self.watchlist,
+                        'alerts': self.alerts,
+                        'portfolio': self.portfolio,
+                        'update_interval': self.update_interval,
+                        'fiat_currency': self.fiat_currency,
+                        'use_proxy': self.use_proxy,
+                        'proxy_url': self.proxy_url
+                    }
+                    with open(filename, 'w') as f:
+                        json.dump(config, f, indent=2)
+                    print(f"{Fore.GREEN}Configuration exported to {filename}{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"{Fore.RED}Export failed: {e}{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '5':
+                filename = input(f"{Fore.CYAN}Enter config filename to import: {Style.RESET_ALL}")
+                try:
+                    with open(filename, 'r') as f:
+                        config = json.load(f)
+                        self.watchlist = config.get('watchlist', [])
+                        self.alerts = config.get('alerts', {})
+                        self.portfolio = config.get('portfolio', {})
+                        self.update_interval = config.get('update_interval', 60)
+                        self.fiat_currency = config.get('fiat_currency', 'usd')
+                        self.use_proxy = config.get('use_proxy', False)
+                        self.proxy_url = config.get('proxy_url', 'socks5://127.0.0.1:9050')
+                        
+                        if self.use_proxy:
+                            self.setup_proxy()
+                        
+                        self.save_config()
+                        print(f"{Fore.GREEN}Configuration imported successfully{Style.RESET_ALL}")
+                except FileNotFoundError:
+                    print(f"{Fore.RED}File not found{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"{Fore.RED}Import failed: {e}{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '6':
+                confirm = input(f"{Fore.YELLOW}Reset all settings to defaults? (y/N): {Style.RESET_ALL}")
+                if confirm.lower() == 'y':
+                    self.watchlist = []
+                    self.alerts = {}
+                    self.portfolio = {}
+                    self.update_interval = 60
+                    self.fiat_currency = 'usd'
+                    self.use_proxy = False
+                    self.proxy_url = 'socks5://127.0.0.1:9050'
+                    self.session.proxies.clear()
+                    self.save_config()
+                    print(f"{Fore.GREEN}Settings reset to defaults{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '0':
+                break
+            else:
+                print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                time.sleep(1)
+                
+    def manage_watchlist(self):
+        """Manage cryptocurrency watchlist"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            print(f"{Fore.YELLOW}Manage Watchlist{Style.RESET_ALL}")
+            print("━" * 40)
+            
+            if self.watchlist:
+                print(f"{Fore.GREEN}Current Watchlist:")
+                for i, coin_id in enumerate(self.watchlist, 1):
+                    print(f"{i}. {coin_id}")
+            else:
+                print(f"{Fore.YELLOW}Watchlist is empty{Style.RESET_ALL}")
+            
+            print()
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} Add cryptocurrency")
+            print(f"{Fore.GREEN}2.{Style.RESET_ALL} Remove cryptocurrency")
+            print(f"{Fore.GREEN}3.{Style.RESET_ALL} Clear watchlist")
+            print(f"{Fore.GREEN}0.{Style.RESET_ALL} Back to main menu")
+            
+            choice = input(f"\n{Fore.CYAN}Select option: {Style.RESET_ALL}")
+            
+            if choice == '1':
+                coin_id = input(f"{Fore.CYAN}Enter coin ID (e.g., bitcoin, ethereum): {Style.RESET_ALL}")
+                if coin_id and coin_id not in self.watchlist:
+                    self.watchlist.append(coin_id)
+                    print(f"{Fore.GREEN}Added {coin_id} to watchlist{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}Coin already in watchlist or invalid ID{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '2':
+                if self.watchlist:
+                    try:
+                        idx = int(input(f"{Fore.CYAN}Enter number to remove: {Style.RESET_ALL}")) - 1
+                        if 0 <= idx < len(self.watchlist):
+                            removed = self.watchlist.pop(idx)
+                            print(f"{Fore.GREEN}Removed {removed} from watchlist{Style.RESET_ALL}")
+                        else:
+                            print(f"{Fore.RED}Invalid selection{Style.RESET_ALL}")
+                    except ValueError:
+                        print(f"{Fore.RED}Invalid input{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}Watchlist is empty{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '3':
+                self.watchlist.clear()
+                print(f"{Fore.GREEN}Watchlist cleared{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '0':
+                break
+            else:
+                print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                time.sleep(1)
+                
+    def manage_alerts(self):
+        """Manage price alerts"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            print(f"{Fore.YELLOW}Manage Price Alerts{Style.RESET_ALL}")
+            print("━" * 40)
+            
+            if self.alerts:
+                print(f"{Fore.GREEN}Current Alerts:")
+                for coin_id, price in self.alerts.items():
+                    print(f"• {coin_id}: ${price:,.2f}")
+            else:
+                print(f"{Fore.YELLOW}No alerts set{Style.RESET_ALL}")
+            
+            print()
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} Add price alert")
+            print(f"{Fore.GREEN}2.{Style.RESET_ALL} Remove alert")
+            print(f"{Fore.GREEN}3.{Style.RESET_ALL} Clear all alerts")
+            print(f"{Fore.GREEN}0.{Style.RESET_ALL} Back to main menu")
+            
+            choice = input(f"\n{Fore.CYAN}Select option: {Style.RESET_ALL}")
+            
+            if choice == '1':
+                coin_id = input(f"{Fore.CYAN}Enter coin ID: {Style.RESET_ALL}")
+                try:
+                    price = float(input(f"{Fore.CYAN}Enter target price: ${Style.RESET_ALL}"))
+                    self.alerts[coin_id] = price
+                    print(f"{Fore.GREEN}Alert set for {coin_id} at ${price:,.2f}{Style.RESET_ALL}")
+                except ValueError:
+                    print(f"{Fore.RED}Invalid price{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '2':
+                if self.alerts:
+                    coin_id = input(f"{Fore.CYAN}Enter coin ID to remove: {Style.RESET_ALL}")
+                    if coin_id in self.alerts:
+                        del self.alerts[coin_id]
+                        print(f"{Fore.GREEN}Alert removed for {coin_id}{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}No alert found for {coin_id}{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}No alerts to remove{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '3':
+                self.alerts.clear()
+                print(f"{Fore.GREEN}All alerts cleared{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                
+            elif choice == '0':
+                break
+            else:
+                print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                time.sleep(1)
+                
+    def search_crypto(self, query):
+        """Search for cryptocurrencies"""
+        try:
+            url = f"{self.api_url}/search"
+            params = {'query': query}
+            response = self.session.get(url, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('coins', [])
+            else:
+                print(f"{Fore.RED}Search failed: {response.status_code}{Style.RESET_ALL}")
+                return []
+        except Exception as e:
+            print(f"{Fore.RED}Search error: {e}{Style.RESET_ALL}")
+            return []
+            
+    def display_coin_details(self, coin_id):
+        """Display detailed information for a specific coin"""
+        try:
+            url = f"{self.api_url}/coins/{coin_id}"
+            response = self.session.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                coin = response.json()
+                
+                self.clear_screen()
+                print(f"\n{Fore.CYAN}═══ {coin['name']} ({coin['symbol'].upper()}) Details ═══{Style.RESET_ALL}")
+                print()
+                
+                market_data = coin.get('market_data', {})
+                current_price = market_data.get('current_price', {}).get(self.fiat_currency, 0)
+                market_cap = market_data.get('market_cap', {}).get(self.fiat_currency, 0)
+                volume_24h = market_data.get('total_volume', {}).get(self.fiat_currency, 0)
+                price_change_24h = market_data.get('price_change_percentage_24h', 0)
+                price_change_7d = market_data.get('price_change_percentage_7d', 0)
+                price_change_30d = market_data.get('price_change_percentage_30d', 0)
+                
+                currency_symbol = "$" if self.fiat_currency == "usd" else self.fiat_currency.upper() + " "
+                
+                print(f"Current Price: {Fore.GREEN}{currency_symbol}{current_price:,.2f}{Style.RESET_ALL}")
+                print(f"Market Cap: {Fore.YELLOW}{currency_symbol}{market_cap:,.0f}{Style.RESET_ALL}")
+                print(f"24h Volume: {Fore.BLUE}{currency_symbol}{volume_24h:,.0f}{Style.RESET_ALL}")
+                
+                # Show multiple timeframe changes
+                for period, change in [("24h", price_change_24h), ("7d", price_change_7d), ("30d", price_change_30d)]:
+                    if change is not None:
+                        change_color = Fore.GREEN if change > 0 else Fore.RED
+                        change_symbol = "+" if change > 0 else ""
+                        print(f"{period} Change: {change_color}{change_symbol}{change:.2f}%{Style.RESET_ALL}")
+                
+                # Additional details
+                if 'market_cap_rank' in coin:
+                    print(f"Market Cap Rank: {Fore.CYAN}#{coin['market_cap_rank']}{Style.RESET_ALL}")
+                
+                if 'description' in coin and 'en' in coin['description']:
+                    desc = coin['description']['en'][:300] + "..." if len(coin['description']['en']) > 300 else coin['description']['en']
+                    print(f"\n{Fore.CYAN}Description:{Style.RESET_ALL}")
+                    print(desc)
+                
+                # Links
+                links = coin.get('links', {})
+                if links.get('homepage'):
+                    print(f"\n{Fore.CYAN}Website:{Style.RESET_ALL} {links['homepage'][0]}")
+                
+            else:
+                print(f"{Fore.RED}Failed to get coin details{Style.RESET_ALL}")
+                
+        except Exception as e:
+            print(f"{Fore.RED}Error getting details: {e}{Style.RESET_ALL}")
+            
+        input("\nPress Enter to continue...")
+    
+    def display_market_overview(self):
+        """Display global cryptocurrency market overview"""
+        self.clear_screen()
+        self.print_banner()
+        
+        print(f"{Fore.YELLOW}Global Cryptocurrency Market Overview{Style.RESET_ALL}")
+        print("━" * 50)
+        
+        market_data = self.get_market_overview()
+        if market_data:
+            total_market_cap = market_data.get('total_market_cap', {}).get(self.fiat_currency, 0)
+            total_volume = market_data.get('total_volume', {}).get(self.fiat_currency, 0)
+            market_cap_change = market_data.get('market_cap_change_percentage_24h_usd', 0)
+            btc_dominance = market_data.get('market_cap_percentage', {}).get('btc', 0)
+            eth_dominance = market_data.get('market_cap_percentage', {}).get('eth', 0)
+            active_cryptos = market_data.get('active_cryptocurrencies', 0)
+            
+            change_color = Fore.GREEN if market_cap_change >= 0 else Fore.RED
+            change_symbol = "+" if market_cap_change >= 0 else ""
+            
+            print(f"Total Market Cap: {Fore.CYAN}${total_market_cap:,.0f}{Style.RESET_ALL}")
+            print(f"24h Volume: {Fore.BLUE}${total_volume:,.0f}{Style.RESET_ALL}")
+            print(f"Market Cap Change (24h): {change_color}{change_symbol}{market_cap_change:.2f}%{Style.RESET_ALL}")
+            print(f"Bitcoin Dominance: {Fore.YELLOW}{btc_dominance:.1f}%{Style.RESET_ALL}")
+            print(f"Ethereum Dominance: {Fore.MAGENTA}{eth_dominance:.1f}%{Style.RESET_ALL}")
+            print(f"Active Cryptocurrencies: {Fore.GREEN}{active_cryptos:,}{Style.RESET_ALL}")
+            
+            # Get DeFi data
+            defi_data = self.get_defi_data()
+            if defi_data:
+                defi_market_cap = float(defi_data.get('defi_market_cap', 0) or 0)
+                defi_dominance = float(defi_data.get('defi_dominance', 0) or 0)
+                print(f"\n{Fore.CYAN}DeFi Statistics:{Style.RESET_ALL}")
+                print(f"DeFi Market Cap: {Fore.GREEN}${defi_market_cap:,.0f}{Style.RESET_ALL}")
+                print(f"DeFi Dominance: {Fore.YELLOW}{defi_dominance:.2f}%{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}Unable to fetch market overview data{Style.RESET_ALL}")
+    
+    def display_trending_coins(self):
+        """Display trending cryptocurrencies"""
+        self.clear_screen()
+        self.print_banner()
+        
+        print(f"{Fore.YELLOW}Trending Cryptocurrencies{Style.RESET_ALL}")
+        print("━" * 40)
+        
+        trending = self.get_trending_coins()
+        if trending:
+            for i, coin_data in enumerate(trending[:10], 1):
+                coin = coin_data['item']
+                print(f"{i:2d}. {Fore.CYAN}{coin['name']}{Style.RESET_ALL} ({Fore.YELLOW}{coin['symbol']}{Style.RESET_ALL})")
+                print(f"    Rank: #{coin.get('market_cap_rank', 'N/A')}")
+                if 'price_btc' in coin:
+                    print(f"    Price: {coin['price_btc']:.8f} BTC")
+                print()
+        else:
+            print(f"{Fore.RED}Unable to fetch trending coins data{Style.RESET_ALL}")
+    
+    def display_defi_dashboard(self):
+        """Display DeFi market dashboard"""
+        self.clear_screen()
+        self.print_banner()
+        
+        print(f"{Fore.YELLOW}DeFi Market Dashboard{Style.RESET_ALL}")
+        print("━" * 40)
+        
+        defi_data = self.get_defi_data()
+        if defi_data:
+            defi_market_cap = float(defi_data.get('defi_market_cap', 0) or 0)
+            eth_market_cap = float(defi_data.get('eth_market_cap', 0) or 0)
+            defi_dominance = float(defi_data.get('defi_dominance', 0) or 0)
+            volume_24h = float(defi_data.get('trading_volume_24h', 0) or 0)
+            defi_to_eth_ratio = float(defi_data.get('defi_to_eth_ratio', 0) or 0)
+            
+            print(f"DeFi Market Cap: {Fore.GREEN}${defi_market_cap:,.0f}{Style.RESET_ALL}")
+            print(f"ETH Market Cap: {Fore.BLUE}${eth_market_cap:,.0f}{Style.RESET_ALL}")
+            print(f"DeFi Dominance: {Fore.YELLOW}{defi_dominance:.2f}%{Style.RESET_ALL}")
+            print(f"24h Trading Volume: {Fore.CYAN}${volume_24h:,.0f}{Style.RESET_ALL}")
+            print(f"DeFi/ETH Ratio: {Fore.MAGENTA}{defi_to_eth_ratio:.2f}%{Style.RESET_ALL}")
+            
+            # Get top DeFi coins
+            print(f"\n{Fore.CYAN}Top DeFi Tokens:{Style.RESET_ALL}")
+            defi_coins = ['uniswap', 'chainlink', 'aave', 'compound-governance-token', 'maker', 'curve-dao-token']
+            data = self.get_crypto_data(per_page=50)
+            if data:
+                defi_tokens = [coin for coin in data if coin['id'] in defi_coins]
+                for i, coin in enumerate(defi_tokens[:5], 1):
+                    change_24h = coin.get('price_change_percentage_24h', 0)
+                    change_color = Fore.GREEN if change_24h >= 0 else Fore.RED
+                    change_symbol = "+" if change_24h >= 0 else ""
+                    
+                    print(f"{i}. {Fore.CYAN}{coin['name']}{Style.RESET_ALL} - ${coin['current_price']:.2f} ({change_color}{change_symbol}{change_24h:.2f}%{Style.RESET_ALL})")
+        else:
+            print(f"{Fore.RED}Unable to fetch DeFi data{Style.RESET_ALL}")
+    
+    def historical_data_menu(self):
+        """Historical data analysis menu"""
+        while True:
+            self.clear_screen()
+            self.print_banner()
+            
+            print(f"{Fore.YELLOW}Historical Data Analysis{Style.RESET_ALL}")
+            print("━" * 40)
+            
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} View Price History (30 days)")
+            print(f"{Fore.GREEN}2.{Style.RESET_ALL} View Price History (90 days)")
+            print(f"{Fore.GREEN}3.{Style.RESET_ALL} View Price History (1 year)")
+            print(f"{Fore.GREEN}4.{Style.RESET_ALL} Compare Two Coins")
+            print(f"{Fore.GREEN}0.{Style.RESET_ALL} Back to main menu")
+            
+            choice = input(f"\n{Fore.CYAN}Select option: {Style.RESET_ALL}")
+            
+            if choice in ['1', '2', '3']:
+                coin_id = input(f"{Fore.CYAN}Enter coin ID: {Style.RESET_ALL}")
+                days = {'1': 30, '2': 90, '3': 365}[choice]
+                
+                historical = self.get_historical_data(coin_id, days)
+                if historical:
+                    prices = historical.get('prices', [])
+                    if prices:
+                        print(f"\n{Fore.CYAN}Price History for {coin_id} ({days} days):{Style.RESET_ALL}")
+                        print("━" * 50)
+                        
+                        # Show basic statistics
+                        price_values = [price[1] for price in prices]
+                        min_price = min(price_values)
+                        max_price = max(price_values)
+                        avg_price = sum(price_values) / len(price_values)
+                        current_price = price_values[-1]
+                        change_percent = ((current_price - price_values[0]) / price_values[0]) * 100
+                        
+                        change_color = Fore.GREEN if change_percent >= 0 else Fore.RED
+                        change_symbol = "+" if change_percent >= 0 else ""
+                        
+                        print(f"Current Price: {Fore.GREEN}${current_price:.2f}{Style.RESET_ALL}")
+                        print(f"Period Change: {change_color}{change_symbol}{change_percent:.2f}%{Style.RESET_ALL}")
+                        print(f"Minimum: {Fore.RED}${min_price:.2f}{Style.RESET_ALL}")
+                        print(f"Maximum: {Fore.GREEN}${max_price:.2f}{Style.RESET_ALL}")
+                        print(f"Average: {Fore.BLUE}${avg_price:.2f}{Style.RESET_ALL}")
+                        
+                        # Simple ASCII chart
+                        print(f"\n{Fore.CYAN}Price Trend (last 10 data points):{Style.RESET_ALL}")
+                        recent_prices = price_values[-10:]
+                        for i, price in enumerate(recent_prices):
+                            bar_length = int((price - min(recent_prices)) / (max(recent_prices) - min(recent_prices)) * 20)
+                            bar = "█" * bar_length
+                            print(f"{i+1:2d}: {bar} ${price:.2f}")
+                    else:
+                        print(f"{Fore.RED}No price data available{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.RED}Unable to fetch historical data{Style.RESET_ALL}")
+                input("\nPress Enter to continue...")
+                
+            elif choice == '0':
+                break
+            else:
+                print(f"{Fore.RED}Invalid option{Style.RESET_ALL}")
+                time.sleep(1)
+
+def main():
+    tracker = CryptoTracker()
+    tracker.main_menu()
+
+if __name__ == "__main__":
+    main()

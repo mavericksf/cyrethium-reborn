@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Riki
+Comment=Feature-rich steganography tool for images and audio with LSB, AES-GCM encryption and compression
+Comment[tr]=Görüntü ve ses dosyaları için LSB, AES-GCM şifreleme ve sıkıştırma içeren gelişmiş steganografi aracı
+Comment[es]=Herramienta de esteganografía avanzada para imágenes y audio con LSB, cifrado AES-GCM y compresión
+Comment[fr]=Outil de stéganographie avancé pour images et audio avec LSB, chiffrement AES-GCM et compression
+Comment[de]=Funktionsreiches Steganographie-Tool für Bilder und Audio mit LSB, AES-GCM-Verschlüsselung und Kompression
+Comment[ar]=أداة إخفاء البيانات المتقدمة للصور والصوت مع LSB وتشفير AES-GCM والضغط
+Comment[ru]=Многофункциональный инструмент стеганографии для изображений и аудио с LSB, шифрованием AES-GCM и сжатием
+Comment[zh]=功能丰富的图像和音频隐写工具，支持LSB、AES-GCM加密和压缩
+Comment[ja]=LSB、AES-GCM暗号化、圧縮を備えた画像とオーディオ用の高機能ステガノグラフィツール
+Comment[ko]=LSB, AES-GCM 암호화 및 압축 기능을 갖춘 이미지 및 오디오용 스테가노그래피 도구
+Comment[pt]=Ferramenta de esteganografia avançada para imagens e áudio com LSB, criptografia AES-GCM e compressão
+Comment[it]=Strumento di steganografia avanzato per immagini e audio con LSB, crittografia AES-GCM e compressione
+Comment[nl]=Geavanceerde steganografie-tool voor afbeeldingen en audio met LSB, AES-GCM-versleuteling en compressie
+Comment[sv]=Funktionsrik steganografiverktyg för bilder och ljud med LSB, AES-GCM-kryptering och komprimering
+Comment[pl]=Zaawansowane narzędzie steganograficzne dla obrazów i dźwięku z LSB, szyfrowaniem AES-GCM i kompresją
+Exec=mate-terminal -- bash -c "/usr/local/bin/riki --help; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=Encryption;
+StartupNotify=false

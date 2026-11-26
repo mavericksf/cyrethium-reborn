@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Check if cyrethonion-mate is already running using pgrep
+if pgrep -f "python.*cyrethonion-mate" > /dev/null; then
+    echo "cyrethonion-mate is already running"
+    
+    # Try to focus the window if wmctrl is available
+    if command -v wmctrl > /dev/null; then
+        wmctrl -a "Cyrethonion" 2>/dev/null
+    fi
+    
+    exit 0
+else
+    # Remove any stale PID file if it exists
+    if [ -f "/tmp/cyrethonion-mate.pid" ]; then
+        rm -f "/tmp/cyrethonion-mate.pid"
+    fi
+    
+    # Launch cyrethonion-mate
+    exec /usr/bin/cyrethonion-mate
+fi

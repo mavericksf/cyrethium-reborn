@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Cyrethium Conky Manager
+Comment=Manage and configure Conky widgets
+Comment[tr]=Conky widget’larını yönet ve yapılandır
+Comment[es]=Gestiona y configura los widgets de Conky
+Comment[fr]=Gérez et configurez les widgets Conky
+Comment[de]=Conky-Widgets verwalten und konfigurieren
+Comment[ar]=إدارة وتكوين عناصر Conky
+Comment[ru]=Управление и настройка виджетов Conky
+Comment[zh]=管理和配置 Conky 小部件
+Comment[ja]=Conky ウィジェットを管理および構成
+Comment[ko]=Conky 위젯 관리 및 구성
+Comment[pt]=Gerencie e configure os widgets do Conky
+Comment[it]=Gestisci e configura i widget di Conky
+Comment[nl]=Beheer en configureer Conky-widgets
+Comment[sv]=Hantera och konfigurera Conky-widgets
+Comment[pl]=Zarządzaj i konfiguruj widgety Conky
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/conky-manager; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=System;
+StartupNotify=false

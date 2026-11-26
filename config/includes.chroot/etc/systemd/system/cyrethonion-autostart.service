@@ -1,0 +1,16 @@
+[Unit]
+Description=Cyrethonion Tor Traffic Routing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cyrethonion start
+ExecStop=/usr/bin/cyrethonion stop
+Restart=always
+RestartSec=5s
+KillMode=none
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

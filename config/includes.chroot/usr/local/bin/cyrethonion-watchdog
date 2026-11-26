@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Cyrethonion Watchdog - Internet connectivity monitor
+# Automatically restarts Cyrethonion when internet connection is restored
+# Uses nmcli to prevent IP leakage during connectivity checks
+
+BACKUPDIR="/var/lib/cyrethonion"
+PIDFILE="/var/run/cyrethonion-watchdog.pid"
+CHECK_INTERVAL=5  # Check every 5 seconds
+
+# Check if cyrethonion is active (backup file exists)
+is_cyrethonion_active() {
+    [ -f "$BACKUPDIR/started" ]
+}
+
+# Check internet connectivity using nmcli (no external IP leak)
+check_internet() {
+    local nmcli_state=$(nmcli -t -f STATE general 2>/dev/null)
+    case "$nmcli_state" in
+        "connected")
+            return 0  # Internet connection available
+            ;;
+        "disconnected"|"connecting"|"asleep"|"")
+            return 1  # No internet or transitional state
+            ;;
+        *)
+            return 1  # Unknown state, treat as offline
+            ;;
+    esac
+}
+
+# Restart cyrethonion
+restart_cyrethonion() {
+    # Stop and start cyrethonion to ensure clean state
+    sudo /usr/bin/cyrethonion stop >/dev/null 2>&1
+    sleep 2
+    sudo /usr/bin/cyrethonion start >/dev/null 2>&1
+}
+
+# Signal handlers for clean shutdown
+cleanup() {
+    rm -f "$PIDFILE"
+    exit 0
+}
+
+trap cleanup SIGTERM SIGINT
+
+# Check if already running
+if [ -f "$PIDFILE" ]; then
+    if kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "Cyrethonion Watchdog is already running (PID: $(cat "$PIDFILE"))"
+        exit 1
+    else
+        rm -f "$PIDFILE"
+    fi
+fi
+
+# Create PID file
+echo $$ > "$PIDFILE"
+
+# Start watchdog
+
+# State tracking
+previous_internet_state=""
+internet_restored=false
+
+while true; do
+    # Only monitor if cyrethonion is active
+    if is_cyrethonion_active; then
+        if check_internet; then
+            current_state="connected"
+        else
+            current_state="disconnected"
+        fi
+        
+        # Detect state changes
+        if [ "$previous_internet_state" != "$current_state" ]; then
+            if [ "$current_state" = "connected" ] && [ "$previous_internet_state" = "disconnected" ]; then
+                # Internet was restored
+                internet_restored=true
+            elif [ "$current_state" = "disconnected" ] && [ "$previous_internet_state" = "connected" ]; then
+                # Internet was lost
+                internet_restored=false
+            fi
+            
+            previous_internet_state="$current_state"
+        fi
+        
+        # Restart cyrethonion if internet was restored
+        if [ "$internet_restored" = true ] && [ "$current_state" = "connected" ]; then
+            restart_cyrethonion
+            internet_restored=false
+        fi
+    else
+        # Cyrethonion is not active, reset state tracking
+        previous_internet_state=""
+        internet_restored=false
+    fi
+    
+    sleep "$CHECK_INTERVAL"
+done

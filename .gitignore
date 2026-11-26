@@ -1,0 +1,10 @@
+*.iso
+*.squashfs
+*.img
+*.log
+cache/
+chroot/
+binary/
+.build/
+__pycache__/
+*.pyc

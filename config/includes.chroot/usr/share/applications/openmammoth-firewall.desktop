@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=OpenMammoth Firewall
+Comment=Security Firewall with iptables
+Comment[tr]=Güvenlik Duvarı (iptables ile)
+Comment[es]=Cortafuegos de Seguridad con iptables
+Comment[fr]=Pare-feu de Sécurité avec iptables
+Comment[de]=Sicherheits-Firewall mit iptables
+Comment[ar]=جدار حماية أمان مع iptables
+Comment[ru]=Брандмауэр безопасности с iptables
+Comment[zh]=安全防火墙(使用iptables)
+Comment[ja]=iptablesを使用したセキュリティファイアウォール
+Comment[ko]=iptables를 사용한 보안 방화벽
+Comment[pt]=Firewall de Segurança com iptables
+Comment[it]=Firewall di Sicurezza con iptables
+Comment[nl]=Beveiligingsfirewall met iptables
+Comment[sv]=Säkerhetsbrandvägg med iptables
+Comment[pl]=Zapora Bezpieczeństwa z iptables
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/openmammoth-firewall; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/openmammoth.png
+Categories=NetworkSec;
+StartupNotify=false

@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Crypto Privacy Analyzer
+Comment=Analyze cryptocurrency transaction privacy and security recommendations
+Comment[tr]=Kripto para işlem gizliliği analizi ve güvenlik önerileri
+Comment[es]=Analizar la privacidad de transacciones de criptomonedas y recomendaciones de seguridad
+Comment[fr]=Analyser la confidentialité des transactions de cryptomonnaies et recommandations de sécurité
+Comment[de]=Kryptowährungs-Transaktions-Privatsphäre analysieren und Sicherheitsempfehlungen
+Comment[ar]=تحليل خصوصية معاملات العملات المشفرة وتوصيات الأمان
+Comment[ru]=Анализ конфиденциальности криптовалютных транзакций и рекомендации по безопасности
+Comment[zh]=分析加密货币交易隐私和安全建议
+Comment[ja]=暗号通貨取引のプライバシー分析とセキュリティ推奨事項
+Comment[ko]=암호화폐 거래 개인정보 분석 및 보안 권장사항
+Comment[pt]=Analisar privacidade de transações de criptomoedas e recomendações de segurança
+Comment[it]=Analizzare la privacy delle transazioni di criptovalute e raccomandazioni di sicurezza
+Comment[nl]=Cryptocurrency transactie privacy analyseren en beveiligingsaanbevelingen
+Comment[sv]=Analysera kryptovaluta transaktionsintegritet och säkerhetsrekommendationer
+Comment[pl]=Analizuj prywatność transakcji kryptowalut i zalecenia bezpieczeństwa
+Exec=crypto-privacy-analyzer
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/crypto-privacy.png
+Categories=Cryptocurrency;
+StartupNotify=false

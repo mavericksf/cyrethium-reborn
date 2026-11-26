@@ -1,0 +1,484 @@
+#!/usr/bin/env python3
+import sys
+import os
+import hashlib
+import secrets
+import base58
+import qrcode
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                            QHBoxLayout, QGridLayout, QLabel, QPushButton, 
+                            QComboBox, QTextEdit, QLineEdit, QGroupBox, 
+                            QScrollArea, QFrame, QMessageBox, QFileDialog,
+                            QTabWidget, QSpinBox, QCheckBox)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtGui import QPixmap, QFont, QPalette, QColor, QPainter
+import ecdsa
+from Crypto.Hash import keccak
+import bech32
+
+
+class CryptoCurrency:
+    def __init__(self, name, symbol, address_prefix=None, wif_prefix=None):
+        self.name = name
+        self.symbol = symbol
+        self.address_prefix = address_prefix
+        self.wif_prefix = wif_prefix
+
+
+class WalletGenerator:
+    
+    @staticmethod
+    def generate_private_key():
+        return secrets.randbits(256).to_bytes(32, byteorder='big')
+    
+    @staticmethod
+    def private_key_to_wif(private_key, compressed=True, testnet=False):
+        if testnet:
+            prefix = b'\xef'
+        else:
+            prefix = b'\x80'
+        
+        extended_key = prefix + private_key
+        if compressed:
+            extended_key += b'\x01'
+        
+        hash1 = hashlib.sha256(extended_key).digest()
+        hash2 = hashlib.sha256(hash1).digest()
+        checksum = hash2[:4]
+        
+        return base58.b58encode(extended_key + checksum).decode('utf-8')
+    
+    @staticmethod
+    def generate_bitcoin_address(private_key, compressed=True, testnet=False):
+        sk = ecdsa.SigningKey.from_string(private_key, curve=ecdsa.SECP256k1)
+        vk = sk.get_verifying_key()
+        
+        if compressed:
+            if vk.pubkey.point.y() % 2 == 0:
+                public_key = b'\x02' + vk.pubkey.point.x().to_bytes(32, byteorder='big')
+            else:
+                public_key = b'\x03' + vk.pubkey.point.x().to_bytes(32, byteorder='big')
+        else:
+            public_key = b'\x04' + vk.to_string()
+        
+        # Hash public key
+        sha256_hash = hashlib.sha256(public_key).digest()
+        ripemd160 = hashlib.new('ripemd160')
+        ripemd160.update(sha256_hash)
+        public_key_hash = ripemd160.digest()
+        
+        # Add version byte
+        if testnet:
+            versioned_payload = b'\x6f' + public_key_hash
+        else:
+            versioned_payload = b'\x00' + public_key_hash
+        
+        # Calculate checksum
+        hash1 = hashlib.sha256(versioned_payload).digest()
+        hash2 = hashlib.sha256(hash1).digest()
+        checksum = hash2[:4]
+        
+        address = base58.b58encode(versioned_payload + checksum).decode('utf-8')
+        return address
+    
+    @staticmethod
+    def generate_ethereum_address(private_key):
+        sk = ecdsa.SigningKey.from_string(private_key, curve=ecdsa.SECP256k1)
+        vk = sk.get_verifying_key()
+        public_key = vk.to_string()
+        
+        keccak_hash = keccak.new(digest_bits=256)
+        keccak_hash.update(public_key)
+        address = '0x' + keccak_hash.hexdigest()[-40:]
+        
+        address_hash = keccak.new(digest_bits=256)
+        address_hash.update(address[2:].encode('utf-8'))
+        hash_hex = address_hash.hexdigest()
+        
+        checksum_address = '0x'
+        for i, char in enumerate(address[2:]):
+            if int(hash_hex[i], 16) >= 8:
+                checksum_address += char.upper()
+            else:
+                checksum_address += char.lower()
+        
+        return checksum_address
+    
+    @staticmethod
+    def generate_litecoin_address(private_key, compressed=True):
+        sk = ecdsa.SigningKey.from_string(private_key, curve=ecdsa.SECP256k1)
+        vk = sk.get_verifying_key()
+        
+        if compressed:
+            if vk.pubkey.point.y() % 2 == 0:
+                public_key = b'\x02' + vk.pubkey.point.x().to_bytes(32, byteorder='big')
+            else:
+                public_key = b'\x03' + vk.pubkey.point.x().to_bytes(32, byteorder='big')
+        else:
+            public_key = b'\x04' + vk.to_string()
+        
+        sha256_hash = hashlib.sha256(public_key).digest()
+        ripemd160 = hashlib.new('ripemd160')
+        ripemd160.update(sha256_hash)
+        public_key_hash = ripemd160.digest()
+        
+        versioned_payload = b'\x30' + public_key_hash
+        
+        hash1 = hashlib.sha256(versioned_payload).digest()
+        hash2 = hashlib.sha256(hash1).digest()
+        checksum = hash2[:4]
+        
+        address = base58.b58encode(versioned_payload + checksum).decode('utf-8')
+        return address
+
+
+class QRCodeGenerator:
+    
+    @staticmethod
+    def generate_qr_code(data, size=200):
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(data)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        img = img.resize((size, size), Image.Resampling.LANCZOS)
+        return img
+    
+    @staticmethod
+    def pil_to_qpixmap(pil_image):
+        byte_array = BytesIO()
+        pil_image.save(byte_array, format='PNG')
+        byte_array.seek(0)
+        
+        qpixmap = QPixmap()
+        qpixmap.loadFromData(byte_array.getvalue())
+        return qpixmap
+
+
+class WalletGeneratorThread(QThread):
+    wallet_generated = pyqtSignal(dict)
+    
+    def __init__(self, crypto_type, count=1):
+        super().__init__()
+        self.crypto_type = crypto_type
+        self.count = count
+    
+    def run(self):
+        for i in range(self.count):
+            private_key = WalletGenerator.generate_private_key()
+            private_key_hex = private_key.hex()
+            
+            wallet_data = {
+                'private_key_hex': private_key_hex,
+                'crypto_type': self.crypto_type
+            }
+            
+            if self.crypto_type == 'Bitcoin':
+                wallet_data['address'] = WalletGenerator.generate_bitcoin_address(private_key)
+                wallet_data['wif'] = WalletGenerator.private_key_to_wif(private_key)
+            elif self.crypto_type == 'Ethereum':
+                wallet_data['address'] = WalletGenerator.generate_ethereum_address(private_key)
+                wallet_data['wif'] = private_key_hex  # Ethereum uses raw private key
+            elif self.crypto_type == 'Litecoin':
+                wallet_data['address'] = WalletGenerator.generate_litecoin_address(private_key)
+                wallet_data['wif'] = WalletGenerator.private_key_to_wif(private_key, compressed=True, testnet=False)
+            
+            self.wallet_generated.emit(wallet_data)
+
+
+class WalletDisplayWidget(QWidget):
+    def __init__(self, wallet_data):
+        super().__init__()
+        self.wallet_data = wallet_data
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        info_group = QGroupBox(f"{self.wallet_data['crypto_type']} Wallet")
+        info_layout = QGridLayout()
+        
+        address_label = QLabel("Address:")
+        address_label.setFont(QFont("Arial", 10, QFont.Bold))
+        self.address_edit = QLineEdit(self.wallet_data['address'])
+        self.address_edit.setReadOnly(True)
+        self.address_edit.setStyleSheet("QLineEdit { background-color: #f0f0f0; }")
+        
+        private_key_label = QLabel("Private Key:")
+        private_key_label.setFont(QFont("Arial", 10, QFont.Bold))
+        self.private_key_edit = QLineEdit(self.wallet_data['private_key_hex'])
+        self.private_key_edit.setReadOnly(True)
+        self.private_key_edit.setStyleSheet("QLineEdit { background-color: #f0f0f0; }")
+        
+        if 'wif' in self.wallet_data:
+            wif_label = QLabel("WIF:")
+            wif_label.setFont(QFont("Arial", 10, QFont.Bold))
+            self.wif_edit = QLineEdit(self.wallet_data['wif'])
+            self.wif_edit.setReadOnly(True)
+            self.wif_edit.setStyleSheet("QLineEdit { background-color: #f0f0f0; }")
+        
+        qr_layout = QHBoxLayout()
+        
+        address_qr_group = QGroupBox("Address QR Code")
+        address_qr_layout = QVBoxLayout()
+        self.address_qr_label = QLabel()
+        self.address_qr_label.setAlignment(Qt.AlignCenter)
+        self.generate_address_qr()
+        address_qr_layout.addWidget(self.address_qr_label)
+        address_qr_group.setLayout(address_qr_layout)
+        
+        private_key_qr_group = QGroupBox("Private Key QR Code")
+        private_key_qr_layout = QVBoxLayout()
+        self.private_key_qr_label = QLabel()
+        self.private_key_qr_label.setAlignment(Qt.AlignCenter)
+        self.generate_private_key_qr()
+        private_key_qr_layout.addWidget(self.private_key_qr_label)
+        private_key_qr_group.setLayout(private_key_qr_layout)
+        
+        qr_layout.addWidget(address_qr_group)
+        qr_layout.addWidget(private_key_qr_group)
+        
+        info_layout.addWidget(address_label, 0, 0)
+        info_layout.addWidget(self.address_edit, 0, 1)
+        info_layout.addWidget(private_key_label, 1, 0)
+        info_layout.addWidget(self.private_key_edit, 1, 1)
+        
+        if 'wif' in self.wallet_data:
+            info_layout.addWidget(wif_label, 2, 0)
+            info_layout.addWidget(self.wif_edit, 2, 1)
+        
+        info_group.setLayout(info_layout)
+        
+        button_layout = QHBoxLayout()
+        copy_address_btn = QPushButton("Copy Address")
+        copy_private_key_btn = QPushButton("Copy Private Key")
+        save_wallet_btn = QPushButton("Save Wallet")
+        
+        copy_address_btn.clicked.connect(self.copy_address)
+        copy_private_key_btn.clicked.connect(self.copy_private_key)
+        save_wallet_btn.clicked.connect(self.save_wallet)
+        
+        button_layout.addWidget(copy_address_btn)
+        button_layout.addWidget(copy_private_key_btn)
+        button_layout.addWidget(save_wallet_btn)
+        
+        layout.addWidget(info_group)
+        layout.addLayout(qr_layout)
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+    
+    def generate_address_qr(self):
+        qr_img = QRCodeGenerator.generate_qr_code(self.wallet_data['address'], 150)
+        qr_pixmap = QRCodeGenerator.pil_to_qpixmap(qr_img)
+        self.address_qr_label.setPixmap(qr_pixmap)
+    
+    def generate_private_key_qr(self):
+        qr_img = QRCodeGenerator.generate_qr_code(self.wallet_data['private_key_hex'], 150)
+        qr_pixmap = QRCodeGenerator.pil_to_qpixmap(qr_img)
+        self.private_key_qr_label.setPixmap(qr_pixmap)
+    
+    def copy_address(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.wallet_data['address'])
+        QMessageBox.information(self, "Copied", "Address copied to clipboard!")
+    
+    def copy_private_key(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.wallet_data['private_key_hex'])
+        QMessageBox.information(self, "Copied", "Private key copied to clipboard!")
+    
+    def save_wallet(self):
+        filename, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Save Wallet", 
+            f"{self.wallet_data['crypto_type']}_wallet.txt",
+            "Text Files (*.txt);;All Files (*)"
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'w') as f:
+                    f.write(f"{self.wallet_data['crypto_type']} Paper Wallet\n")
+                    f.write("=" * 50 + "\n\n")
+                    f.write(f"Address: {self.wallet_data['address']}\n")
+                    f.write(f"Private Key: {self.wallet_data['private_key_hex']}\n")
+                    if 'wif' in self.wallet_data:
+                        f.write(f"WIF: {self.wallet_data['wif']}\n")
+                    f.write("\n" + "=" * 50 + "\n")
+                    f.write("IMPORTANT: Keep this private key secure!\n")
+                    f.write("Anyone with access to this private key can spend your funds.\n")
+                
+                QMessageBox.information(self, "Saved", f"Wallet saved to {filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save wallet: {str(e)}")
+
+
+class PaperWalletApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.wallets = []
+        self.init_ui()
+        self.setStyleSheet(self.get_stylesheet())
+    
+    def init_ui(self):
+        self.setWindowTitle("Cyrethium Multi-Cryptocurrency Paper Wallet Generator")
+        self.setGeometry(100, 100, 1200, 800)
+        
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        main_layout = QVBoxLayout()
+        
+        header_label = QLabel("Cyrethium Multi-Cryptocurrency Paper Wallet Generator")
+        header_label.setAlignment(Qt.AlignCenter)
+        header_label.setFont(QFont("Arial", 18, QFont.Bold))
+        header_label.setStyleSheet("QLabel { color: #2c3e50; margin: 10px; }")
+        
+        controls_group = QGroupBox("Wallet Generation Settings")
+        controls_layout = QGridLayout()
+        
+        crypto_label = QLabel("Cryptocurrency:")
+        self.crypto_combo = QComboBox()
+        self.crypto_combo.addItems(["Bitcoin", "Ethereum", "Litecoin"])
+        
+        count_label = QLabel("Number of Wallets:")
+        self.count_spinbox = QSpinBox()
+        self.count_spinbox.setMinimum(1)
+        self.count_spinbox.setMaximum(10)
+        self.count_spinbox.setValue(1)
+        
+        self.generate_btn = QPushButton("Generate Wallet(s)")
+        self.generate_btn.clicked.connect(self.generate_wallets)
+        self.generate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 10px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        
+        self.clear_btn = QPushButton("Clear All Wallets")
+        self.clear_btn.clicked.connect(self.clear_wallets)
+        self.clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                border: none;
+                padding: 10px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        
+        controls_layout.addWidget(crypto_label, 0, 0)
+        controls_layout.addWidget(self.crypto_combo, 0, 1)
+        controls_layout.addWidget(count_label, 0, 2)
+        controls_layout.addWidget(self.count_spinbox, 0, 3)
+        controls_layout.addWidget(self.generate_btn, 0, 4)
+        controls_layout.addWidget(self.clear_btn, 0, 5)
+        
+        controls_group.setLayout(controls_layout)
+        
+        self.scroll_area = QScrollArea()
+        self.scroll_widget = QWidget()
+        self.scroll_layout = QVBoxLayout()
+        self.scroll_widget.setLayout(self.scroll_layout)
+        self.scroll_area.setWidget(self.scroll_widget)
+        self.scroll_area.setWidgetResizable(True)
+        
+        self.statusBar().showMessage("Ready to generate wallets")
+        
+        main_layout.addWidget(header_label)
+        main_layout.addWidget(controls_group)
+        main_layout.addWidget(self.scroll_area)
+        
+        central_widget.setLayout(main_layout)
+    
+    def get_stylesheet(self):
+        return """
+            QMainWindow {
+                background-color: #ecf0f1;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #bdc3c7;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+            QLineEdit {
+                border: 1px solid #bdc3c7;
+                border-radius: 3px;
+                padding: 5px;
+                font-family: monospace;
+            }
+            QComboBox, QSpinBox {
+                border: 1px solid #bdc3c7;
+                border-radius: 3px;
+                padding: 5px;
+            }
+        """
+    
+    def generate_wallets(self):
+        crypto_type = self.crypto_combo.currentText()
+        count = self.count_spinbox.value()
+        
+        self.generate_btn.setEnabled(False)
+        self.statusBar().showMessage(f"Generating {count} {crypto_type} wallet(s)...")
+        
+        self.generator_thread = WalletGeneratorThread(crypto_type, count)
+        self.generator_thread.wallet_generated.connect(self.add_wallet)
+        self.generator_thread.finished.connect(self.generation_finished)
+        self.generator_thread.start()
+    
+    def add_wallet(self, wallet_data):
+        wallet_widget = WalletDisplayWidget(wallet_data)
+        self.scroll_layout.addWidget(wallet_widget)
+        self.wallets.append(wallet_widget)
+    
+    def generation_finished(self):
+        self.generate_btn.setEnabled(True)
+        self.statusBar().showMessage("Wallet generation completed")
+    
+    def clear_wallets(self):
+        for wallet in self.wallets:
+            wallet.deleteLater()
+        self.wallets.clear()
+        self.statusBar().showMessage("All wallets cleared")
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("Cyrethium Paper Wallet Generator")
+    app.setApplicationVersion("1.0")
+    
+    window = PaperWalletApp()
+    window.show()
+    
+    sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()

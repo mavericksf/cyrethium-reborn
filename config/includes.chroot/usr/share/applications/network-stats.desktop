@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Network Stats
+Comment=Comprehensive network statistics and monitoring
+Comment[tr]=Kapsamlı ağ istatistikleri ve izleme
+Comment[es]=Estadísticas y monitoreo integral de red
+Comment[fr]=Statistiques et surveillance réseau complètes
+Comment[de]=Umfassende Netzwerkstatistiken und -überwachung
+Comment[ar]=إحصائيات ومراقبة الشبكة الشاملة
+Comment[ru]=Комплексная статистика и мониторинг сети
+Comment[zh]=全面的网络统计和监控
+Comment[ja]=包括的なネットワーク統計と監視
+Comment[ko]=포괄적인 네트워크 통계 및 모니터링
+Comment[pt]=Estatísticas e monitoramento abrangente de rede
+Comment[it]=Statistiche e monitoraggio di rete completi
+Comment[nl]=Uitgebreide netwerkstatistieken en monitoring
+Comment[sv]=Omfattande nätverksstatistik och övervakning
+Comment[pl]=Kompleksowe statystyki i monitorowanie sieci
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/network-stats; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/net.png
+Categories=NetworkSec;
+StartupNotify=false

@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Nyx Tor Monitor
+Comment=Command-line Tor network monitor and analyzer
+Comment[tr]=Komut satırı Tor ağ monitörü ve analiz aracı
+Comment[es]=Monitor y analizador de red Tor en línea de comandos
+Comment[fr]=Moniteur et analyseur du réseau Tor en ligne de commande
+Comment[de]=Kommandozeilen-Tor-Netzwerkmonitor und -analysator
+Comment[ar]=مراقب ومحلل شبكة تور على سطر الأوامر
+Comment[ru]=Монитор и анализатор сети Tor через командную строку
+Comment[zh]=命令行Tor网络监视器和分析器
+Comment[ja]=コマンドラインTorネットワークモニターおよびアナライザー
+Comment[ko]=명령줄 Tor 네트워크 모니터 및 분석기
+Comment[pt]=Monitor e analisador de rede Tor via linha de comando
+Comment[it]=Monitor e analizzatore di rete Tor da riga di comando
+Comment[nl]=Commandoregel Tor-netwerkmonitor en -analysator
+Comment[sv]=Kommandoradsbaserad Tor-nätverksmonitor och analysator
+Comment[pl]=Monitor i analizator sieci Tor w wierszu poleceń
+Exec=mate-terminal -- bash -c "sudo nyx; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=NodeAnalysis;
+StartupNotify=false

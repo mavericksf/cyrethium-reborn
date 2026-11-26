@@ -1,0 +1,15 @@
+[Unit]
+Description=Cyrethium Temporary Files Cleanup Service
+DefaultDependencies=false
+Before=shutdown.target reboot.target halt.target
+Conflicts=shutdown.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/cyrethium-cleanup-temp
+TimeoutStopSec=20s
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=halt.target reboot.target shutdown.target

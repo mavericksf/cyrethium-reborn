@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Cyrethium Paper Wallet Generator
+Comment=Multi-cryptocurrency paper wallet generator with QR codes
+Comment[tr]=QR kodlu çoklu kripto para kağıt cüzdan üreticisi
+Comment[es]=Generador de billeteras de papel multi-criptomoneda con códigos QR
+Comment[fr]=Générateur de portefeuilles papier multi-cryptomonnaies avec codes QR
+Comment[de]=Multi-Kryptowährungs-Papier-Wallet-Generator mit QR-Codes
+Comment[ar]=مولد محافظ ورقية متعددة العملات المشفرة مع رموز QR
+Comment[ru]=Генератор бумажных кошельков для нескольких криптовалют с QR-кодами
+Comment[zh]=带二维码的多加密货币纸钱包生成器
+Comment[ja]=QRコード付きマルチ暗号通貨ペーパーウォレットジェネレーター
+Comment[ko]=QR 코드가 포함된 다중 암호화폐 종이 지갑 생성기
+Comment[pt]=Gerador de carteiras de papel multi-criptomoeda com códigos QR
+Comment[it]=Generatore di portafogli cartacei multi-criptovaluta con codici QR
+Comment[nl]=Multi-cryptocurrency papieren portemonnee generator met QR-codes
+Comment[sv]=Multi-kryptovaluta pappersplånbok generator med QR-koder
+Comment[pl]=Generator portfeli papierowych wielokryptowalutowych z kodami QR
+Exec=paper-wallet
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/paper-wallet.png
+Categories=Cryptocurrency;
+StartupNotify=false

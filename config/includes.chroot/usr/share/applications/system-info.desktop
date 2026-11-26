@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=System Information
+Comment=Modern system information viewer with dark theme
+Comment[tr]=Modern koyu temalı sistem bilgi görüntüleyici
+Comment[es]=Visor moderno de información del sistema con tema oscuro
+Comment[fr]=Visualiseur moderne d'informations système avec thème sombre
+Comment[de]=Moderner Systeminformations-Viewer mit dunklem Design
+Comment[ar]=عارض معلومات النظام الحديث بالموضوع المظلم
+Comment[ru]=Современный просмотрщик системной информации с темной темой
+Comment[zh]=具有深色主题的现代系统信息查看器
+Comment[ja]=ダークテーマを備えたモダンなシステム情報ビューア
+Comment[ko]=어두운 테마를 가진 현대적인 시스템 정보 뷰어
+Comment[pt]=Visualizador moderno de informações do sistema com tema escuro
+Comment[it]=Visualizzatore moderno delle informazioni di sistema con tema scuro
+Comment[nl]=Moderne systeeminformatie-viewer met donker thema
+Comment[sv]=Modern systeminformationsvisare med mörkt tema
+Comment[pl]=Nowoczesna przeglądarka informacji systemowych z ciemnym motywem
+Exec=system-info
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/redicon.png
+Categories=System;
+StartupNotify=false

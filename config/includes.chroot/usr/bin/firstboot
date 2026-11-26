@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Check the filesystem type of root
+if grep -q overlay /proc/mounts; then
+    echo "Running on a live system."
+    exit 0
+fi
+
+# Remove NVIDIA drivers # debian bug , calamares need nvidia drivers in live mode idk why. nvidia users can install manually after install
+apt purge -y nvidia*
+
+# Clean up unneeded dependencies
+apt autoremove -y
+
+systemctl disable cyrethium-firstboot.service
+
+rm -rf /usr/bin/firstboot
+rm -rf /etc/systemd/system/cyrethium-firstboot.service
+
+# Disable the services so they won't run again
+
+echo "Finished."

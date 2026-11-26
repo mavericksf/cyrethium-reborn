@@ -1,0 +1,1029 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Cyrethonion MATE System Tray 
+Simple, reliable system tray for Tor routing control
+developed by root0emir
+"""
+
+import os
+import sys
+import subprocess
+import threading
+import time
+import gi
+import gettext
+import urllib.request
+import urllib.error
+import re
+import json
+
+# Initialize gettext
+gettext.bindtextdomain('cyrethonion', '/usr/share/locale')
+gettext.textdomain('cyrethonion')
+_ = gettext.gettext
+
+gi.require_version("Gtk", "3.0")
+gi.require_version('AyatanaAppIndicator3', '0.1')
+gi.require_version('Notify', '0.7')
+
+from gi.repository import GLib, Gtk, GdkPixbuf, Notify
+from gi.repository import AyatanaAppIndicator3 as AppIndicator
+
+class CyrethonionTray:
+    def __init__(self):
+        self.indicator = None
+        self.menu = None
+        self.current_status = "unknown"
+        self.status_lock = threading.Lock()
+        self.ip_change_in_progress = False
+        self.ip_change_timer = None
+        
+        # Icon paths
+        self.icons = {
+            'enabled': '/usr/share/icons/hicolor/scalable/apps/cyrethonion-enabled.png',
+            'disabled': '/usr/share/icons/hicolor/scalable/apps/cyrethonion-disabled.png',
+            'offline': '/usr/share/icons/hicolor/scalable/apps/cyrethonion-offline.png',
+            'ipchange': '/usr/share/icons/hicolor/scalable/apps/cyrethonion-ipchange.png',
+            'timeout': '/usr/share/icons/hicolor/scalable/apps/cyrethonion-timeout.png'
+        }
+        
+        # Menu items
+        self.menu_items = {}
+        
+        # Initialize notifications
+        Notify.init("Cyrethonion")
+        
+        self.setup_indicator()
+        self.create_menu()
+        self.start_status_monitor()
+
+    def setup_indicator(self):
+        """Setup the system tray indicator"""
+        self.indicator = AppIndicator.Indicator.new(
+            "cyrethonion-tray",
+            self.icons['disabled'],
+            AppIndicator.IndicatorCategory.SYSTEM_SERVICES
+        )
+        
+        self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        self.indicator.set_ordering_index(0)
+        self.indicator.set_title("Cyrethonion")
+
+    def create_menu(self):
+        """Create the context menu"""
+        self.menu = Gtk.Menu()
+        
+        # Start Tor Routing
+        self.menu_items['start'] = Gtk.MenuItem(_('Start Tor Routing'))
+        self.menu_items['start'].connect('activate', self.on_start_clicked)
+        self.menu.append(self.menu_items['start'])
+        
+        # Stop Tor Routing  
+        self.menu_items['stop'] = Gtk.MenuItem(_('Stop Tor Routing'))
+        self.menu_items['stop'].connect('activate', self.on_stop_clicked)
+        self.menu.append(self.menu_items['stop'])
+        
+        # Separator
+        separator1 = Gtk.SeparatorMenuItem()
+        self.menu.append(separator1)
+        
+        # Show IP Address
+        self.menu_items['check_ip'] = Gtk.MenuItem(_('Show IP Address'))
+        self.menu_items['check_ip'].connect('activate', self.on_check_ip_clicked)
+        self.menu.append(self.menu_items['check_ip'])
+        
+        # Change IP Address
+        self.menu_items['change_ip'] = Gtk.MenuItem(_('Change IP Address'))
+        self.menu_items['change_ip'].connect('activate', self.on_change_ip_clicked)
+        self.menu.append(self.menu_items['change_ip'])
+        
+        # Status
+        self.menu_items['status'] = Gtk.MenuItem(_('Status'))
+        self.menu_items['status'].connect('activate', self.on_status_clicked)
+        self.menu.append(self.menu_items['status'])
+        
+        # Restart Router
+        self.menu_items['restart'] = Gtk.MenuItem(_('Restart Router'))
+        self.menu_items['restart'].connect('activate', self.on_restart_clicked)
+        self.menu.append(self.menu_items['restart'])
+        
+        # Separator
+        separator2 = Gtk.SeparatorMenuItem()
+        self.menu.append(separator2)
+        
+        # Bridge Management
+        self.menu_items['add_bridges'] = Gtk.MenuItem(_('Add Bridges'))
+        self.menu_items['add_bridges'].connect('activate', self.on_add_bridges_clicked)
+        self.menu.append(self.menu_items['add_bridges'])
+        
+        self.menu_items['list_bridges'] = Gtk.MenuItem(_('List Bridges'))
+        self.menu_items['list_bridges'].connect('activate', self.on_list_bridges_clicked)
+        self.menu.append(self.menu_items['list_bridges'])
+        
+        self.menu_items['clear_bridges'] = Gtk.MenuItem(_('Clear Bridges'))
+        self.menu_items['clear_bridges'].connect('activate', self.on_clear_bridges_clicked)
+        self.menu.append(self.menu_items['clear_bridges'])
+        
+        # Separator
+        separator3 = Gtk.SeparatorMenuItem()
+        self.menu.append(separator3)
+        
+        # Help
+        self.menu_items['help'] = Gtk.MenuItem(_('Help & Troubleshooting'))
+        self.menu_items['help'].connect('activate', self.on_help_clicked)
+        self.menu.append(self.menu_items['help'])
+        
+        # About
+        self.menu_items['about'] = Gtk.MenuItem(_('About'))
+        self.menu_items['about'].connect('activate', self.on_about_clicked)
+        self.menu.append(self.menu_items['about'])
+        
+        # Exit
+        self.menu_items['exit'] = Gtk.MenuItem(_('Exit'))
+        self.menu_items['exit'].connect('activate', self.on_exit_clicked)
+        self.menu.append(self.menu_items['exit'])
+        
+        self.menu.show_all()
+        self.indicator.set_menu(self.menu)
+
+    def get_tor_status(self):
+        """Get current Tor routing status with detection"""
+        try:
+            # Faster status check with reduced timeout
+            result = subprocess.run([
+                'sudo', '/usr/share/cyrethonion/cyrethonion-status'
+            ], capture_output=True, text=True, timeout=2)
+            
+            if result.returncode == 0:
+                primary_status = result.stdout.strip()
+                
+                # Enhanced validation for each status
+                if primary_status == 'enabled':
+                    return 'enabled'
+                elif primary_status == 'disabled': 
+                    return 'disabled'
+                elif primary_status == 'stopped':
+                    return 'stopped'
+                elif primary_status == 'offline':
+                    return 'offline'  # Trust cyrethonion-status script's internet check
+                else:
+                    return 'disabled'  # Default to disabled instead of error
+                
+            else:
+                return 'disabled'  # Default to disabled instead of error
+                
+        except subprocess.TimeoutExpired:
+            return 'timeout'  # Return timeout for timeout states
+        except Exception as e:
+            return 'timeout'  # Return timeout for connection errors
+
+    def update_ui_status(self, status, force_update=False):
+        """Update UI based on status - must be called from main thread"""
+        with self.status_lock:
+            if status == self.current_status and not force_update:
+                return  # No change needed
+            
+            self.current_status = status
+            
+            # Force icon refresh by clearing and setting again
+            if force_update:
+                self.indicator.set_icon("")
+                GLib.timeout_add(50, self._delayed_icon_update, status)
+            else:
+                self._update_icon_and_menu(status)
+
+    def _delayed_icon_update(self, status):
+        self._update_icon_and_menu(status)
+        return False  # Don't repeat
+        
+    def _update_icon_and_menu(self, status):
+        if status == 'enabled':
+            self.indicator.set_icon(self.icons['enabled'])
+            self.indicator.set_label("ACTIVE", "")
+            self.menu_items['start'].set_sensitive(False)
+            self.menu_items['stop'].set_sensitive(True)
+            self.menu_items['change_ip'].set_sensitive(True)
+            self.menu_items['restart'].set_sensitive(True)
+            self.menu_items['check_ip'].set_sensitive(True)
+            self.menu_items['status'].set_sensitive(True)
+            
+        elif status == 'disabled':
+            self.indicator.set_icon(self.icons['disabled'])
+            self.indicator.set_label("DISABLED", "")
+            self.menu_items['start'].set_sensitive(True)
+            self.menu_items['stop'].set_sensitive(False)
+            self.menu_items['change_ip'].set_sensitive(False)
+            self.menu_items['restart'].set_sensitive(True)
+            self.menu_items['check_ip'].set_sensitive(True)
+            self.menu_items['status'].set_sensitive(True)
+            
+        elif status == 'timeout':
+            self.indicator.set_icon(self.icons['timeout'])
+            self.indicator.set_label("TIMEOUT", "")
+            self.menu_items['start'].set_sensitive(True)
+            self.menu_items['stop'].set_sensitive(False)
+            self.menu_items['change_ip'].set_sensitive(False)
+            self.menu_items['restart'].set_sensitive(True)
+            self.menu_items['check_ip'].set_sensitive(True)
+            self.menu_items['status'].set_sensitive(True)
+            
+        elif status == 'offline':
+            self.indicator.set_icon(self.icons['offline'])
+            self.indicator.set_label("OFFLINE", "")
+            # Disable all main buttons when offline (no internet connection)
+            self.menu_items['start'].set_sensitive(False)
+            self.menu_items['stop'].set_sensitive(False)
+            self.menu_items['change_ip'].set_sensitive(False)
+            self.menu_items['restart'].set_sensitive(False)
+            self.menu_items['check_ip'].set_sensitive(False)
+            self.menu_items['status'].set_sensitive(False)
+            
+        else:  # unknown, stopped, error
+            self.indicator.set_icon(self.icons['disabled'])
+            self.indicator.set_label("ERROR", "")
+            self.menu_items['start'].set_sensitive(True)
+            self.menu_items['stop'].set_sensitive(False)
+            self.menu_items['change_ip'].set_sensitive(False)
+            self.menu_items['restart'].set_sensitive(True)
+            self.menu_items['check_ip'].set_sensitive(True)
+            self.menu_items['status'].set_sensitive(True)
+
+    def status_monitor_thread(self):
+        while True:
+            try:
+                if self.ip_change_in_progress:
+                    time.sleep(2)
+                    continue
+                    
+                status = self.get_tor_status()
+                with self.status_lock:
+                    if status != self.current_status:
+                        GLib.idle_add(self.update_ui_status, status, True)
+                time.sleep(1.5)  # Faster monitoring for better responsiveness
+            except Exception as e:
+                time.sleep(3)  # Wait on error
+
+    def start_status_monitor(self):
+        monitor_thread = threading.Thread(target=self.status_monitor_thread, daemon=True)
+        monitor_thread.start()
+
+    def execute_command(self, command, success_msg, error_msg):
+        def run_command():
+            try:
+                def show_progress():
+                    if command[0] == 'start':
+                        self.menu_items['start'].set_label(_('Starting...'))
+                    elif command[0] == 'stop':
+                        self.menu_items['stop'].set_label(_('Stopping...'))
+                    elif command[0] == 'restart':
+                        self.menu_items['restart'].set_label(_('Restarting...'))
+                    elif command[0] == 'changeid':
+                        self.menu_items['change_ip'].set_label(_('Changing...'))
+                
+                GLib.idle_add(show_progress)
+                
+                result = subprocess.run(
+                    ['sudo', '/usr/bin/cyrethonion'] + command,
+                    capture_output=True, text=True, timeout=15
+                )
+                
+                def show_result():
+                    self.menu_items['start'].set_label(_('Start Tor Routing'))
+                    self.menu_items['stop'].set_label(_('Stop Tor Routing'))
+                    self.menu_items['restart'].set_label(_('Restart Router'))
+                    self.menu_items['change_ip'].set_label(_('Change IP Address'))
+                    
+                    if result.returncode == 0:
+                        icon_for_success = 'enabled' if command[0] in ['start', 'restart', 'changeid'] else 'disabled'
+                        
+                        # Show custom notification messages instead of cyrethonion output
+                        if command[0] == 'start':
+                            custom_msg = _('Cyrethonion has been successfully started! All incoming and outgoing internet traffic to and from the system is forced to be routed through the Tor network.')
+                        elif command[0] == 'stop':
+                            custom_msg = _('Cyrethonion has been successfully stopped. Internet traffic is NOT being redirected to the Tor network.')
+                        elif command[0] == 'restart':
+                            custom_msg = _('Cyrethonion has been successfully restarted! All incoming and outgoing internet traffic to and from the system is forced to be routed through the Tor network.')
+                        elif command[0] == 'changeid':
+                            custom_msg = _('IP address has been successfully changed!')
+                        else:
+                            custom_msg = result.stdout  # Fallback to original output for other commands
+                        
+                        self.show_notification(success_msg, custom_msg, icon_for_success)
+                        
+                        if command[0] == 'changeid':
+                            GLib.idle_add(self.update_ui_status, 'enabled', True)
+                    else:
+                        error_text = result.stderr if result.stderr else result.stdout
+                        self.show_notification(error_msg, error_text, 'disabled')
+                
+                GLib.idle_add(show_result)
+                
+                # Schedule status update without blocking
+                def delayed_status_update():
+                    time.sleep(0.3)
+                    status = self.get_tor_status()
+                    GLib.idle_add(self.update_ui_status, status, True)  # Force update
+                
+                status_thread = threading.Thread(target=delayed_status_update, daemon=True)
+                status_thread.start()
+                
+            except subprocess.TimeoutExpired:
+                def handle_timeout():
+                    self.menu_items['start'].set_label(_('Start Tor Routing'))
+                    self.menu_items['stop'].set_label(_('Stop Tor Routing'))
+                    self.menu_items['restart'].set_label(_('Restart Router'))
+                    self.menu_items['change_ip'].set_label(_('Change IP Address'))
+                    self.show_notification(error_msg, "Command timed out", 'disabled')
+                GLib.idle_add(handle_timeout)
+            except Exception as e:
+                def handle_error():
+                    self.menu_items['start'].set_label(_('Start Tor Routing'))
+                    self.menu_items['stop'].set_label(_('Stop Tor Routing'))
+                    self.menu_items['restart'].set_label(_('Restart Router'))
+                    self.menu_items['change_ip'].set_label(_('Change IP Address'))
+                    self.show_notification(error_msg, str(e), 'disabled')
+                GLib.idle_add(handle_error)
+        
+        thread = threading.Thread(target=run_command, daemon=True)
+        thread.start()
+
+    def show_notification(self, title, message, icon_status=None):
+        try:
+            notification = Notify.Notification.new(title, message)
+            
+            status_for_icon = icon_status if icon_status else self.current_status
+            
+            try:
+                icon_path = self.icons.get(status_for_icon, self.icons['disabled'])
+                icon = GdkPixbuf.Pixbuf.new_from_file_at_scale(icon_path, 48, 48, True)
+                notification.set_icon_from_pixbuf(icon)
+            except Exception as icon_error:
+                pass
+            
+            notification.set_timeout(5000)
+            notification.show()
+        except Exception as e:
+            pass
+
+    # Event handlers
+    def on_start_clicked(self, widget):
+        """Start Tor routing"""
+        GLib.idle_add(self.show_notification, _('Starting Tor routing...'), _('Please wait while Tor routing is being started'), 'enabled')
+        self.execute_command(['start'], _('Tor routing started'), _('Failed to start Tor routing'))
+
+    def on_stop_clicked(self, widget):
+        """Stop Tor routing"""
+        GLib.idle_add(self.show_notification, _('Stopping Tor routing...'), _('Please wait while Tor routing is being stopped'), 'disabled')
+        self.execute_command(['stop'], _('Tor routing stopped'), _('Failed to stop Tor routing'))
+
+    def on_change_ip_clicked(self, widget):
+        """Change IP address"""
+        GLib.idle_add(self.show_notification, _('Changing IP address...'), _('Please wait while your IP address is being changed'), 'ipchange')
+        
+        self.ip_change_in_progress = True
+        
+        if self.ip_change_timer:
+            GLib.source_remove(self.ip_change_timer)
+        
+        self.indicator.set_icon(self.icons['ipchange'])
+        self.indicator.set_label("IP CHANGING", "")
+        
+        self.ip_change_timer = GLib.timeout_add(5000, self._resume_normal_monitoring)  # 5 seconds
+        
+        self.execute_command(['changeid'], _('IP address changed'), _('Failed to change IP address'))
+
+    def _resume_normal_monitoring(self):
+        self.ip_change_in_progress = False
+        self.ip_change_timer = None
+        
+        def aggressive_status_check():
+            time.sleep(1)
+            
+            for attempt in range(5):
+                try:
+                    GLib.idle_add(self.update_ui_status, 'enabled', True)
+                    break
+                except Exception:
+                    if attempt < 4:
+                        time.sleep(0.5)
+                        GLib.idle_add(self.update_ui_status, 'enabled', True)
+        
+        threading.Thread(target=aggressive_status_check, daemon=True).start()
+        return False
+
+    def on_restart_clicked(self, widget):
+        GLib.idle_add(self.show_notification, _('Cyrethonion is restarting...'), _('Please wait while Tor router is being restarted'), 'enabled')
+        self.execute_command(['restart'], _('Cyrethonion restarted'), _('Failed to restart Tor router'))
+
+    def on_check_ip_clicked(self, widget):
+        # Show immediate notification
+        GLib.idle_add(self.show_notification, _('Checking IP address...'), _('Please wait while checking your current IP address'), 'enabled')
+        
+        def check_ip_address():
+            try:
+                # Use direct connection (no proxy) to test if traffic is actually routed through Tor
+                response = urllib.request.urlopen('https://check.torproject.org/api/ip', timeout=10)
+                data = json.loads(response.read().decode('utf-8'))
+                
+                ip_address = data.get('IP', 'Unknown')
+                is_tor = data.get('IsTor', False)
+                
+                if is_tor:
+                    status_msg = f"IP: {ip_address}\nTor Status: ✓ Traffic routed via Tor"
+                    icon_status = 'enabled'
+                else:
+                    status_msg = f"IP: {ip_address}\nTor Status: ✗ Traffic not routed via Tor"
+                    icon_status = 'disabled'
+                
+                GLib.idle_add(lambda: self.show_notification(_('IP Address Check'), status_msg, icon_status))
+                
+            except urllib.error.URLError as e:
+                # Fallback to HTML parsing if API fails
+                try:
+                    response = urllib.request.urlopen('https://check.torproject.org/', timeout=10)
+                    html = response.read().decode('utf-8')
+                    
+                    # Extract IP from HTML
+                    ip_match = re.search(r'Your IP address appears to be:\s*<strong>([^<]+)</strong>', html)
+                    ip_address = ip_match.group(1) if ip_match else 'Unknown'
+                    
+                    # Check for congrats message
+                    if 'Congratulations' in html or 'congrats' in html.lower():
+                        status_msg = f"IP: {ip_address}\nTor Status: ✓ Traffic routed via Tor"
+                        icon_status = 'enabled'
+                    else:
+                        status_msg = f"IP: {ip_address}\nTor Status: ✗ Traffic not routed via Tor"
+                        icon_status = 'disabled'
+                    
+                    GLib.idle_add(lambda: self.show_notification(_('IP Address Check'), status_msg, icon_status))
+                    
+                except Exception as fallback_error:
+                    error_msg = f"Failed to check IP: {str(fallback_error)}"
+                    GLib.idle_add(lambda: self.show_notification(_('IP Check Error'), error_msg, 'disabled'))
+                    
+            except Exception as e:
+                error_msg = f"Failed to check IP: {str(e)}"
+                GLib.idle_add(lambda: self.show_notification(_('IP Check Error'), error_msg, 'disabled'))
+        
+        thread = threading.Thread(target=check_ip_address, daemon=True)
+        thread.start()
+
+    def on_status_clicked(self, widget):
+        GLib.idle_add(self.show_notification, _('Checking system status...'), _('Please wait while checking Tor system status'), 'enabled')
+        
+        def check_detailed_status():
+            try:
+                tor_result = subprocess.run(['systemctl', 'is-active', 'tor'], 
+                                          capture_output=True, text=True, timeout=2)
+                tor_service = tor_result.stdout.strip() if tor_result.returncode == 0 else 'inactive'
+                
+                # Check routing via Tor Project API
+                routing_status = "NO"
+                try:
+                    response = urllib.request.urlopen('https://check.torproject.org/api/ip', timeout=5)
+                    data = json.loads(response.read().decode('utf-8'))
+                    is_tor = data.get('IsTor', False)
+                    routing_status = "YES" if is_tor else "NO"
+                except Exception:
+                    # Fallback to basic connectivity check
+                    routing_status = "UNKNOWN"
+                
+                status_text = f"Tor Service: {tor_service.upper()}\n"
+                status_text += f"Routing Active: {routing_status}"
+                
+                GLib.idle_add(lambda: self.show_notification(_('System Status'), status_text, self.current_status))
+                
+            except Exception as e:
+                error_msg = f"Status check failed: {str(e)}"
+                GLib.idle_add(lambda: self.show_notification(_('Status Error'), error_msg, 'offline'))
+        
+        thread = threading.Thread(target=check_detailed_status, daemon=True)
+        thread.start()
+
+    def on_add_bridges_clicked(self, widget):
+        self.show_bridge_dialog()
+    
+    def show_bridge_dialog(self):
+        dialog = Gtk.Dialog(title=_('Add Tor Bridges'), 
+                           parent=None, 
+                           flags=Gtk.DialogFlags.MODAL)
+        
+        dialog.set_default_size(600, 400)
+        dialog.add_button(_('Cancel'), Gtk.ResponseType.CANCEL)
+        dialog.add_button(_('Add Bridges'), Gtk.ResponseType.OK)
+        
+        content_area = dialog.get_content_area()
+        content_area.set_border_width(10)
+        
+        info_label = Gtk.Label()
+        info_text = ('<b>' + _('Enter Tor bridges (one per line):') + '</b>\n\n' +
+                     _('Example formats:') + '\n' +
+                     'obfs4 203.0.113.5:443 &lt;FINGERPRINT1&gt; cert=&lt;CERT1&gt; iat-mode=0\n' +
+                     'obfs4 198.51.100.8:443 &lt;FINGERPRINT2&gt; cert=&lt;CERT2&gt; iat-mode=0\n\n' +
+                     '<i>Don\'t forget to restart Cyrethonion after adding bridges</i>')
+        info_label.set_markup(info_text)
+        info_label.set_line_wrap(True)
+        info_label.set_max_width_chars(80)
+        info_label.set_selectable(True)
+        info_label.set_halign(Gtk.Align.START)
+        info_label.set_valign(Gtk.Align.START)
+        content_area.pack_start(info_label, False, False, 10)
+        
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled_window.set_shadow_type(Gtk.ShadowType.IN)
+        
+        text_view = Gtk.TextView()
+        text_view.set_wrap_mode(Gtk.WrapMode.WORD)
+        text_buffer = text_view.get_buffer()
+        scrolled_window.add(text_view)
+        
+        content_area.pack_start(scrolled_window, True, True, 0)
+        
+        help_label = Gtk.Label()
+        help_label.set_markup('<small>' + _('Get bridges from: https://bridges.torproject.org/') + '</small>')
+        help_label.set_halign(Gtk.Align.START)
+        content_area.pack_start(help_label, False, False, 5)
+        
+        dialog.show_all()
+        
+        response = dialog.run()
+        
+        if response == Gtk.ResponseType.OK:
+            start_iter = text_buffer.get_start_iter()
+            end_iter = text_buffer.get_end_iter()
+            bridge_text = text_buffer.get_text(start_iter, end_iter, False).strip()
+            
+            if bridge_text:
+                self.add_bridges_from_text(bridge_text)
+            else:
+                GLib.idle_add(self.show_notification, _('No Bridges'), _('No bridge information was entered'), 'disabled')
+        
+        dialog.destroy()
+    
+    def add_bridges_from_text(self, bridge_text):
+        GLib.idle_add(self.show_notification, _('Adding bridges...'), _('Please wait while bridges are being configured'), 'enabled')
+        
+        def process_bridges():
+            try:
+                bridge_input = bridge_text.strip()
+                if not bridge_input.endswith('\n'):
+                    bridge_input += '\n'
+                
+                process = subprocess.Popen(
+                    ['sudo', '/usr/bin/cyrethonion', 'bridges'],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                
+                stdout, stderr = process.communicate(input=bridge_input, timeout=30)
+                result_code = process.returncode
+                
+                if result_code == 0:
+                    success_msg = _('Bridges added successfully')
+                    if stdout.strip():
+                        success_msg += f"\n{stdout.strip()}"
+                    GLib.idle_add(lambda: self.show_notification(_('Bridge Configuration'), success_msg, 'enabled'))
+                else:
+                    error_msg = stderr.strip() if stderr else _('Failed to add bridges')
+                    GLib.idle_add(lambda: self.show_notification(_('Bridge Error'), error_msg, 'disabled'))
+                    
+            except Exception as e:
+                error_msg = f"Bridge configuration failed: {str(e)}"
+                GLib.idle_add(lambda: self.show_notification(_('Bridge Error'), error_msg, 'disabled'))
+        
+        thread = threading.Thread(target=process_bridges, daemon=True)
+        thread.start()
+    
+    def on_list_bridges_clicked(self, widget):
+        GLib.idle_add(self.show_notification, _('Checking bridges...'), _('Please wait while checking configured bridges'), 'enabled')
+        
+        def list_bridges():
+            try:
+                result = subprocess.run(['sudo', '/usr/bin/cyrethonion', 'list-bridges'], 
+                                      capture_output=True, text=True, timeout=10)
+                
+                if result.returncode == 0:
+                    bridge_info = result.stdout.strip()
+                    if bridge_info:
+                        title = _('Configured Bridges')
+                        message = bridge_info
+                    else:
+                        title = _('No Bridges')
+                        message = _('No bridges are currently configured')
+                else:
+                    title = _('Bridge Check Error')
+                    message = _('Failed to check bridges')
+                
+                GLib.idle_add(lambda: self.show_notification(title, message, 'enabled'))
+                    
+            except Exception as e:
+                error_msg = f"Bridge check failed: {str(e)}"
+                GLib.idle_add(lambda: self.show_notification(_('Bridge Check Error'), error_msg, 'disabled'))
+        
+        thread = threading.Thread(target=list_bridges, daemon=True)
+        thread.start()
+    
+    def on_clear_bridges_clicked(self, widget):
+        GLib.idle_add(self.show_notification, _('Clearing bridges...'), _('Please wait while bridges are being cleared'), 'enabled')
+        self.execute_command(['clear-bridges'], _('Bridges cleared successfully'), _('Failed to clear bridges'))
+
+    def on_help_clicked(self, widget):
+        dialog = Gtk.Dialog(title=_('Cyrethonion Help & Troubleshooting'), 
+                           parent=None, 
+                           flags=Gtk.DialogFlags.MODAL)
+        
+        dialog.set_default_size(800, 600)
+        dialog.add_button(_('Close'), Gtk.ResponseType.CLOSE)
+        
+        content_area = dialog.get_content_area()
+        content_area.set_border_width(15)
+        
+        notebook = Gtk.Notebook()
+        content_area.pack_start(notebook, True, True, 0)
+        
+        self.create_functions_tab(notebook)
+        
+        self.create_troubleshooting_tab(notebook)
+        
+        self.create_security_tab(notebook)
+        
+        self.create_warnings_tab(notebook)
+        
+        dialog.show_all()
+        dialog.run()
+        dialog.destroy()
+    
+    def create_functions_tab(self, notebook):
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        
+        viewport = Gtk.Viewport()
+        scrolled_window.add(viewport)
+        
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_border_width(15)
+        viewport.add(vbox)
+        
+        title_label = Gtk.Label()
+        title_label.set_markup('<big><b>' + _('Button Functions') + '</b></big>')
+        title_label.set_halign(Gtk.Align.START)
+        vbox.pack_start(title_label, False, False, 0)
+        
+        functions_text = '''<b>Start Tor Routing</b>
+Starts system-wide Tor routing. All internet traffic will be routed through the Tor network for anonymity.
+
+<b>Stop Tor Routing</b>
+Stops Tor routing and restores normal internet connection. Your real IP address will be visible again.
+
+<b>Change IP Address</b>
+Changes your Tor exit node to get a new IP address. Only works when Tor routing is active.
+
+<b>Show IP Address</b>
+Checks your current IP address and verifies if traffic is being routed through Tor.
+
+<b>Status</b>
+Shows detailed system status including Tor service status and routing information.
+
+<b>Restart Router</b>
+Restarts the Tor router service. Useful when experiencing connection issues.
+
+<b>Add Bridges</b>
+Adds Tor bridges for countries with internet censorship. Helps bypass Tor blocking.Only Obfs4 bridges are supported.
+
+<b>List Bridges</b>
+Shows currently configured Tor bridges.
+
+<b>Clear Bridges</b>
+Removes all configured bridges and returns to normal Tor entry nodes.'''
+        
+        functions_label = Gtk.Label()
+        functions_label.set_markup(functions_text)
+        functions_label.set_line_wrap(True)
+        functions_label.set_max_width_chars(80)
+        functions_label.set_halign(Gtk.Align.START)
+        functions_label.set_valign(Gtk.Align.START)
+        functions_label.set_selectable(True)
+        vbox.pack_start(functions_label, False, False, 0)
+        
+        notebook.append_page(scrolled_window, Gtk.Label(_('Functions')))
+    
+    def create_troubleshooting_tab(self, notebook):
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        
+        viewport = Gtk.Viewport()
+        scrolled_window.add(viewport)
+        
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_border_width(15)
+        viewport.add(vbox)
+        
+        title_label = Gtk.Label()
+        title_label.set_markup('<big><b>' + _('Troubleshooting') + '</b></big>')
+        title_label.set_halign(Gtk.Align.START)
+        vbox.pack_start(title_label, False, False, 0)
+        
+        troubleshooting_text = '''<b>Internet Connection Lost</b>
+<b>Problem:</b> No internet access after starting Tor routing
+<b>Solution:</b> Click "Restart Router" or "Stop Tor Routing" then "Start Tor Routing" again
+
+<b>Bridge Connection Failed</b>
+<b>Problem:</b> Added bridges but cannot connect to Tor
+<b>Solution:</b> 
+• Clear current bridges and add new ones
+• Paste the bridges exactly as you copied them, without any spaces or modifications
+• Restart Cyrethonion after adding bridges
+• Get fresh bridges from https://bridges.torproject.org/
+
+<b>Slow Connection</b>
+<b>Problem:</b> Internet is very slow with Tor
+<b>Solution:</b> 
+• Click "Change IP Address" to get a faster exit node
+• Restart router to get new circuit
+• This is normal behavior for Tor network
+
+<b>Cannot Change IP</b>
+<b>Problem:</b> IP change button doesn\'t work
+<b>Solution:</b> 
+• Ensure Tor routing is started first
+• Wait a few seconds and try again
+• Restart Tor router if problem persists
+
+<b>tor@default.service failed</b>
+<b>Problem:</b> tor@default.service failed to start
+<b>Solution:</b>
+• This is not a critical error
+• The Tor@default.service will automatically restart
+• The service appearing as failed at system startup does not affect its actual operation
+• Routing and the Tor process will continue to work normally
+
+<b>Start Button Not Working</b>
+<b>Problem:</b> Tor routing won\'t start
+<b>Solution:</b> 
+• Restart the system
+• Ensure no other VPN is running
+
+<b>IP Check Shows Real IP</b>
+<b>Problem:</b> IP check shows your real IP instead of Tor IP
+<b>Solution:</b> 
+• Stop and restart Tor routing
+• Check if any applications bypass Tor
+• Restart your browser'''
+        
+        troubleshooting_label = Gtk.Label()
+        troubleshooting_label.set_markup(troubleshooting_text)
+        troubleshooting_label.set_line_wrap(True)
+        troubleshooting_label.set_max_width_chars(80)
+        troubleshooting_label.set_halign(Gtk.Align.START)
+        troubleshooting_label.set_valign(Gtk.Align.START)
+        troubleshooting_label.set_selectable(True)
+        vbox.pack_start(troubleshooting_label, False, False, 0)
+        
+        notebook.append_page(scrolled_window, Gtk.Label(_('Troubleshooting')))
+    
+    def create_security_tab(self, notebook):
+        """Create the security measures tab"""
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        
+        viewport = Gtk.Viewport()
+        scrolled_window.add(viewport)
+        
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_border_width(15)
+        viewport.add(vbox)
+        
+        title_label = Gtk.Label()
+        title_label.set_markup('<big><b>' + _('Cyrethonion Security Measures') + '</b></big>')
+        title_label.set_halign(Gtk.Align.START)
+        vbox.pack_start(title_label, False, False, 0)
+        
+        security_text = '''<b>Cyrethonion Security Features</b>
+
+<b>Cyrethonion Tor Guard</b>
+Cyrethonion automatically detects and warns about suspicious environment variables that could indicate:
+• Library hijacking attacks
+• Code injection attempts
+• Privilege escalation attacks
+• Malware persistence
+
+<b>Application & Website Isolation</b>
+• Each application and website is completely isolated
+• IsolateClientAddr: Different circuits for different client addresses
+• IsolateSOCKSAuth: Separate circuits for different authentication
+• IsolateClientProtocol: Protocol-based isolation
+• IsolateDestPort: Destination port isolation
+• IsolateDestAddr: Destination address isolation
+
+<b>BAD_FLAGS Attack Prevention</b>
+Advanced TCP flag manipulation protection against network scanning:
+• NULL Scan Protection: Blocks tcp-flags ALL NONE packets
+• XMAS Scan Protection: Blocks tcp-flags ALL FIN,URG,PSH packets
+• SYN+FIN Attack Protection: Blocks invalid SYN,FIN combinations
+• SYN+RST Attack Protection: Blocks invalid SYN,RST combinations
+• All Flags Set Attack Protection: Blocks packets with all TCP flags set
+• RST Flood Protection: Rate limiting RST packets (2/second max)
+• Applied to both INPUT and OUTPUT chains for complete protection
+
+<b>Anti-Spoofing Protection</b>
+Prevents IP address spoofing attacks from external sources:
+• Loopback Spoofing Protection: Drops 127.0.0.0/8 from external interfaces
+• Invalid Source Protection: Drops 0.0.0.0/8 source addresses
+• Multicast Spoofing Protection: Drops 224.0.0.0/4 from external interfaces  
+• Reserved Range Protection: Drops 240.0.0.0/4 from external interfaces
+• Only affects external traffic (preserves loopback functionality)
+
+<b>Iptables Firewall Rules</b>
+• ALL non-Tor traffic is REJECTED automatically
+• Transparent proxy configuration (port 9040)
+• COMPLETE DNS leak prevention - ALL UDP port 53 redirected to Tor DNS (port 9053)
+• IPv6 traffic completely DISABLED to prevent data leaks
+• ICMP traffic DROPPED for stealth mode (no ping responses)
+• Only debian-tor user allowed direct network access
+• Local network exclusions for performance (192.168.x.x, 10.x.x.x, etc.)
+• Automatic firewall rule cleanup on service stop
+
+<b>IPv6 Protection (Sysctl Rules)</b>
+• net.ipv6.conf.all.disable_ipv6=1
+• net.ipv6.conf.default.disable_ipv6=1 
+• net.ipv6.conf.lo.disable_ipv6=1
+• Completely prevents IPv6 data leaks
+
+<b>Process Isolation & Security</b>
+• Runs under debian-tor user for security
+• Prevents privilege escalation
+• Isolated from system processes
+• Hardware acceleration enabled for performance
+• Cookie authentication for control port
+
+<b>Circuit Management</b>
+• NewCircuitPeriod: 40 seconds for fresh circuits
+• MaxCircuitDirtiness: 600 seconds max circuit usage
+• UseEntryGuards: Consistent entry points
+• EnforceDistinctSubnets: Different subnets for diversity
+• MaxClientCircuitsPending: 48 circuits for performance
+
+<b>Secure Restart Mechanism</b>
+• Complete process termination
+• Port release verification (9040, 9050, 9051, 9053)
+• Clean state restoration
+• Prevents resource conflicts
+
+<b>Configuration Backup & Rollback</b>
+• Automatic torrc configuration backup
+• resolv.conf backup and restoration
+• iptables rules backup
+• sysctl settings backup
+• Safe restoration on service stop
+• Prevents permanent system changes
+
+<b>Enhanced DNS Protection</b>
+• ALL DNS queries forced through Tor (port 9053)
+• Prevents DNS leaks completely
+• Blocks malicious DNS responses
+• Anonymous domain resolution
+• AutomapHostsOnResolve for .onion domains'''
+        
+        text_view = Gtk.TextView()
+        text_view.set_editable(False)
+        text_view.set_cursor_visible(False)
+        text_view.set_wrap_mode(Gtk.WrapMode.WORD)
+        text_view.set_left_margin(10)
+        text_view.set_right_margin(10)
+        text_view.set_top_margin(10)
+        text_view.set_bottom_margin(10)
+        
+        buffer = text_view.get_buffer()
+        buffer.set_text(security_text.replace('<b>', '').replace('</b>', '').replace('<big>', '').replace('</big>', ''))
+        
+        vbox.pack_start(text_view, True, True, 0)
+        
+        scrolled_window.show_all()
+        
+        notebook.append_page(scrolled_window, Gtk.Label(_('Security')))
+    
+    def create_warnings_tab(self, notebook):
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        
+        viewport = Gtk.Viewport()
+        scrolled_window.add(viewport)
+        
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_border_width(15)
+        viewport.add(vbox)
+        
+        title_label = Gtk.Label()
+        title_label.set_markup('<big><b>' + _('IMPORTANT WARNINGS') + '</b></big>')
+        title_label.set_halign(Gtk.Align.START)
+        vbox.pack_start(title_label, False, False, 0)
+        
+        warnings_text = '''<span foreground="red"><b>CRITICAL LIMITATIONS</b></span>
+
+<span foreground="red"><b>UDP Traffic is NOT Anonymized</b></span>
+• Cyrethonion drops UDP Traffic automatically
+• Tor only supports TCP connections
+• UDP packets are NOT routed through Tor
+
+<span foreground="red"><b>VoIP Applications Risk</b></span>
+• Voice calls (Skype, Discord, WhatsApp calls)
+• Video calls (Zoom, Teams, Google Meet)
+• These applications use UDP and may not work
+• <b>Recommendation:</b> Disable or avoid during Tor sessions
+
+<span foreground="red"><b>Online Games Risk</b></span>
+• Most online games use UDP for performance
+• Multiplayer games may not work
+• <b>Recommendation:</b> Play offline games only
+
+<span foreground="red"><b>WebRTC Leak Risk</b></span>
+• Web browsers may leak real IP through WebRTC
+• Video chat websites can bypass Tor
+• <b>Solution:</b> Use Hardened/Amnesic Firefox instead of regular browsers
+• Disable WebRTC in browser settings
+
+<span foreground="red"><b>DNS Leak Prevention</b></span>
+• Some applications may use custom DNS servers
+• Could bypass Tor's DNS routing
+• <b>Recommendation:</b> Check for DNS leaks regularly
+
+<span foreground="orange"><b>Performance Impact</b></span>
+• Tor routing adds significant latency
+• Download speeds will be much slower
+• This is normal and necessary for anonymity
+• <b>Patience required</b> for browsing
+
+<span foreground="red"><b>DO NOT Change DNS When Using Cyrethonion</b></span>
+• Changing DNS during Tor routing can lead to DNS leaks
+• Cyrethonion uses Tor's DNS while routing
+• Your current DNS is backed up before routing and restored when routing stops
+• <b>Recommendation:</b> Do not change DNS during routing
+
+<span foreground="red"><b>Do not use with Tor Browser</b></span>
+• Tor Browser is not compatible with Cyrethonion
+• Tor Browser uses its own Tor instance
+• Use Hardened/Amnesic Firefox instead
+
+<span foreground="blue"><b>Best Practices</b></span>
+• Use Hardened/Amnesic Firefox for web browsing
+• Avoid logging into personal accounts
+• Don\'t download/upload large files
+• Never provide personal information
+• Disable plugins and JavaScript when possible
+• Check your IP address regularly
+
+<span foreground="purple"><b>Application-Specific Notes</b></span>
+• <b>Browsers:</b> Use Hardened/Amnesic Firefox for maximum security
+• <b>Email:</b> Use web-based email through Hardened/Amnesic Firefox
+• <b>Streaming:</b> May not work or be very slow'''
+        
+        warnings_label = Gtk.Label()
+        warnings_label.set_markup(warnings_text)
+        warnings_label.set_line_wrap(True)
+        warnings_label.set_max_width_chars(80)
+        warnings_label.set_halign(Gtk.Align.START)
+        warnings_label.set_valign(Gtk.Align.START)
+        warnings_label.set_selectable(True)
+        vbox.pack_start(warnings_label, False, False, 0)
+        
+        notebook.append_page(scrolled_window, Gtk.Label(_('Warnings')))
+
+    def on_about_clicked(self, widget):
+        dialog = Gtk.AboutDialog()
+        dialog.set_program_name("Cyrethonion")
+        dialog.set_version("2.0")
+        dialog.set_comments(_('System-wide Tor routing control'))
+        dialog.set_authors(["root0emir"])
+        dialog.set_license("GNU General Public License v3.0")
+        dialog.set_website("https://cyrethium.org")
+        
+        try:
+            logo = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                self.icons['enabled'], 64, 64, True
+            )
+            dialog.set_logo(logo)
+        except:
+            pass
+        
+        dialog.run()
+        dialog.destroy()
+
+    def on_exit_clicked(self, widget):
+        Notify.uninit()
+        Gtk.main_quit()
+
+def main():
+    try:
+        tray = CyrethonionTray()
+        Gtk.main()
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except Exception as e:
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

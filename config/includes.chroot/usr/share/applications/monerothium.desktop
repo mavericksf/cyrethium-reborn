@@ -1,0 +1,23 @@
+[Desktop Entry]
+Version=1.0
+Name=Monerothium
+Comment=Easy-to-use Monero wallet with Tor support
+Comment[tr]=Tor destekli kullanımı kolay bir monero cüzdanı
+Comment[es]=Monedero de Monero fácil de usar con soporte Tor
+Comment[fr]=Portefeuille Monero facile à utiliser avec prise en charge de Tor
+Comment[de]=Benutzerfreundliche Monero-Brieftasche mit Tor-Unterstützung
+Comment[ar]=محفظة مونيرو سهلة الاستخدام مع دعم تور
+Comment[ru]=Простой в использовании кошелек Monero с поддержкой Tor
+Comment[zh]=支持Tor的易用型Monero钱包
+Comment[ja]=Tor対応の使いやすいMoneroウォレット
+Comment[ko]=Tor 지원이 포함된 사용하기 쉬운 Monero 지갑
+Comment[pt]=Carteira Monero fácil de usar com suporte a Tor
+Comment[it]=Portafoglio Monero facile da usare con supporto Tor
+Comment[nl]=Gebruiksvriendelijke Monero-portemonnee met Tor-ondersteuning
+Comment[sv]=Lättanvänd Monero-plånbok med Tor-stöd
+Comment[pl]=Łatwy w użyciu portfel Monero z obsługą Tor
+Exec=mate-terminal -- bash -c "/usr/bin/monerothium; exec bash"
+Icon=/usr/share/icons/cyrethium/monerothium.png
+Terminal=false
+Type=Application
+Categories=Cryptocurrency;

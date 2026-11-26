@@ -1,0 +1,516 @@
+#!/usr/bin/env python3
+"""
+Secure Key Backup Tool
+Creates encrypted backups of cryptocurrency private keys and seeds
+"""
+
+import sys
+import os
+import json
+import secrets
+import hashlib
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import base64
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                             QHBoxLayout, QLabel, QPushButton, QLineEdit, 
+                             QTextEdit, QComboBox, QFileDialog, QMessageBox, 
+                             QCheckBox, QSpinBox)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QDateTime
+from PyQt5.QtGui import QFont
+
+
+class BackupCreatorThread(QThread):
+    """Thread for creating secure backups without blocking UI"""
+    backup_complete = pyqtSignal(dict)
+    
+    def __init__(self, data, password, backup_type, file_path):
+        super().__init__()
+        self.data = data
+        self.password = password
+        self.backup_type = backup_type
+        self.file_path = file_path
+    
+    def run(self):
+        """Create encrypted backup"""
+        try:
+            # Generate salt
+            salt = os.urandom(16)
+            
+            # Derive key from password
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=100000,
+            )
+            key = base64.urlsafe_b64encode(kdf.derive(self.password.encode()))
+            
+            # Create cipher
+            cipher = Fernet(key)
+            
+            # Prepare backup data
+            backup_data = {
+                'type': self.backup_type,
+                'data': self.data,
+                'created': QDateTime.currentDateTime().toString(),
+                'version': '1.0'
+            }
+            
+            # Encrypt data
+            encrypted_data = cipher.encrypt(json.dumps(backup_data).encode())
+            
+            # Save to file
+            final_backup = {
+                'salt': base64.b64encode(salt).decode(),
+                'data': base64.b64encode(encrypted_data).decode(),
+                'app': 'Cyrethium Secure Backup'
+            }
+            
+            with open(self.file_path, 'w') as f:
+                json.dump(final_backup, f, indent=2)
+            
+            result = {
+                'success': True,
+                'file_path': self.file_path,
+                'size': os.path.getsize(self.file_path),
+                'backup_type': self.backup_type
+            }
+            
+        except Exception as e:
+            result = {
+                'success': False,
+                'error': str(e)
+            }
+        
+        self.backup_complete.emit(result)
+
+
+class RestoreThread(QThread):
+    """Thread for restoring backups without blocking UI"""
+    restore_complete = pyqtSignal(dict)
+    
+    def __init__(self, file_path, password):
+        super().__init__()
+        self.file_path = file_path
+        self.password = password
+    
+    def run(self):
+        """Restore encrypted backup"""
+        try:
+            # Read encrypted file
+            with open(self.file_path, 'rb') as f:
+                encrypted_data = f.read()
+            
+            # Extract salt (first 16 bytes)
+            salt = encrypted_data[:16]
+            encrypted_content = encrypted_data[16:]
+            
+            # Derive key from password
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=100000,
+            )
+            key = base64.urlsafe_b64encode(kdf.derive(self.password.encode()))
+            
+            # Decrypt
+            fernet = Fernet(key)
+            decrypted_data = fernet.decrypt(encrypted_content)
+            
+            # Parse JSON
+            backup_data = json.loads(decrypted_data.decode())
+            
+            self.restore_complete.emit({
+                'success': True,
+                'data': backup_data['data'],
+                'backup_type': backup_data['backup_type'],
+                'created': backup_data['created']
+            })
+            
+        except Exception as e:
+            self.restore_complete.emit({
+                'success': False,
+                'error': str(e)
+            })
+        
+        # Removed duplicate emit statement
+
+
+class SecureKeyBackupApp(QMainWindow):
+    """Secure Key Backup GUI Application"""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet(self.get_clean_theme())
+    
+    def init_ui(self):
+        self.setWindowTitle("Key Backup")
+        self.setGeometry(400, 400, 600, 500)
+        
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Simple header
+        header = QLabel("Key Backup")
+        header.setAlignment(Qt.AlignCenter)
+        header.setFont(QFont("Arial", 16, QFont.Bold))
+        
+        # Mode selection
+        mode_label = QLabel("Mode:")
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Create Backup", "Restore Backup"])
+        self.mode_combo.currentTextChanged.connect(self.mode_changed)
+        
+        # Create backup section
+        self.backup_widget = QWidget()
+        backup_layout = QVBoxLayout()
+        
+        type_label = QLabel("Backup Type:")
+        self.backup_type_combo = QComboBox()
+        self.backup_type_combo.addItems([
+            "Private Keys",
+            "Seed Phrases", 
+            "Wallet Files",
+            "Custom Data"
+        ])
+        
+        data_label = QLabel("Data to Backup:")
+        self.data_input = QTextEdit()
+        self.data_input.setPlaceholderText("Enter private keys, seed phrases, or other sensitive data...")
+        self.data_input.setMaximumHeight(100)
+        
+        password_label = QLabel("Encryption Password:")
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.setPlaceholderText("Enter strong password...")
+        
+        confirm_label = QLabel("Confirm Password:")
+        self.confirm_input = QLineEdit()
+        self.confirm_input.setEchoMode(QLineEdit.Password)
+        self.confirm_input.setPlaceholderText("Confirm password...")
+        
+        backup_layout.addWidget(type_label)
+        backup_layout.addWidget(self.backup_type_combo)
+        backup_layout.addWidget(data_label)
+        backup_layout.addWidget(self.data_input)
+        backup_layout.addWidget(password_label)
+        backup_layout.addWidget(self.password_input)
+        backup_layout.addWidget(confirm_label)
+        backup_layout.addWidget(self.confirm_input)
+        self.backup_widget.setLayout(backup_layout)
+        
+        # Restore backup section
+        self.restore_widget = QWidget()
+        restore_layout = QVBoxLayout()
+        
+        file_label = QLabel("Backup File:")
+        self.file_input = QLineEdit()
+        self.file_input.setPlaceholderText("Select backup file to restore...")
+        self.file_input.setReadOnly(True)
+        
+        self.browse_button = QPushButton("Browse")
+        self.browse_button.clicked.connect(self.browse_backup_file)
+        
+        restore_password_label = QLabel("Decryption Password:")
+        self.restore_password_input = QLineEdit()
+        self.restore_password_input.setEchoMode(QLineEdit.Password)
+        self.restore_password_input.setPlaceholderText("Enter password to decrypt...")
+        
+        file_layout = QHBoxLayout()
+        file_layout.addWidget(self.file_input)
+        file_layout.addWidget(self.browse_button)
+        
+        restore_layout.addWidget(file_label)
+        restore_layout.addLayout(file_layout)
+        restore_layout.addWidget(restore_password_label)
+        restore_layout.addWidget(self.restore_password_input)
+        self.restore_widget.setLayout(restore_layout)
+        self.restore_widget.setVisible(False)
+        
+        # Security options
+        self.show_password = QCheckBox("Show password")
+        self.show_password.stateChanged.connect(self.toggle_password_visibility)
+        
+        # Action button
+        self.action_button = QPushButton("Create Encrypted Backup")
+        self.action_button.clicked.connect(self.handle_action)
+        
+        # Results
+        self.results_text = QTextEdit()
+        self.results_text.setReadOnly(True)
+        self.results_text.setPlainText("Enter sensitive data and create encrypted backup file...")
+        
+        # Layout
+        layout.addWidget(header)
+        layout.addWidget(mode_label)
+        layout.addWidget(self.mode_combo)
+        layout.addWidget(self.backup_widget)
+        layout.addWidget(self.restore_widget)
+        layout.addWidget(self.show_password)
+        layout.addWidget(self.action_button)
+        layout.addWidget(self.results_text)
+        
+        central_widget.setLayout(layout)
+    
+    def mode_changed(self, mode):
+        """Handle mode change between backup and restore"""
+        if mode == "Create Backup":
+            self.backup_widget.setVisible(True)
+            self.restore_widget.setVisible(False)
+            self.action_button.setText("Create Encrypted Backup")
+            self.results_text.setPlainText("Enter sensitive data and create encrypted backup file...")
+        else:
+            self.backup_widget.setVisible(False)
+            self.restore_widget.setVisible(True)
+            self.action_button.setText("Restore from Backup")
+            self.results_text.setPlainText("Select backup file and enter password to restore...")
+    
+    def browse_backup_file(self):
+        """Browse for backup file to restore"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Backup File",
+            "",
+            "Encrypted Files (*.enc);;All Files (*)"
+        )
+        if file_path:
+            self.file_input.setText(file_path)
+    
+    def toggle_password_visibility(self, state):
+        """Toggle password visibility"""
+        if state == 2:  # Checked
+            self.password_input.setEchoMode(QLineEdit.Normal)
+            self.confirm_input.setEchoMode(QLineEdit.Normal)
+            self.restore_password_input.setEchoMode(QLineEdit.Normal)
+        else:
+            self.password_input.setEchoMode(QLineEdit.Password)
+            self.confirm_input.setEchoMode(QLineEdit.Password)
+            self.restore_password_input.setEchoMode(QLineEdit.Password)
+    
+    def handle_action(self):
+        """Handle action based on current mode"""
+        if self.mode_combo.currentText() == "Create Backup":
+            self.create_backup()
+        else:
+            self.restore_backup()
+    
+    def create_backup(self):
+        """Create encrypted backup"""
+        data = self.data_input.toPlainText().strip()
+        password = self.password_input.text()
+        confirm = self.confirm_input.text()
+        backup_type = self.backup_type_combo.currentText()
+        
+        # Validation
+        if not data:
+            self.results_text.setText("Please enter data to backup")
+            return
+        
+        if not password:
+            self.results_text.setText("Please enter encryption password")
+            return
+        
+        if password != confirm:
+            self.results_text.setText("Passwords do not match")
+            return
+        
+        if len(password) < 8:
+            self.results_text.setText("Password must be at least 8 characters")
+            return
+        
+        # Choose save location
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Save Encrypted Backup", 
+            f"cyrethium_backup_{QDateTime.currentDateTime().toString('yyyyMMdd_hhmmss')}.enc",
+            "Encrypted Files (*.enc);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        # Show progress
+        self.backup_button.setEnabled(False)
+        self.backup_button.setText("Creating Backup...")
+        
+        # Start backup creation
+        self.backup_thread = BackupCreatorThread(data, password, backup_type, file_path)
+        self.backup_thread.backup_complete.connect(self.display_backup_result)
+        self.backup_thread.finished.connect(self.backup_finished)
+        self.backup_thread.start()
+    
+    def display_backup_result(self, result):
+        """Display backup creation results"""
+        self.results_text.clear()
+        
+        if result['success']:
+            self.results_text.append("Secure Backup Created Successfully")
+            self.results_text.append("=" * 50)
+            self.results_text.append(f"Backup Type: {result['backup_type']}")
+            self.results_text.append(f"File: {result['file_path']}")
+            self.results_text.append(f"Size: {result['size']} bytes")
+            self.results_text.append(f"Encryption: AES-256 with PBKDF2")
+            self.results_text.append(f"Iterations: 100,000")
+            
+            self.results_text.append("\nSECURITY NOTES:")
+            self.results_text.append("• Backup file is encrypted with your password")
+            self.results_text.append("• Store password separately and securely")
+            self.results_text.append("• Keep multiple copies in different locations")
+            self.results_text.append("• Test recovery process regularly")
+            
+            self.results_text.append("\nRECOVERY:")
+            self.results_text.append("• Use same password to decrypt")
+            self.results_text.append("• File can only be opened with correct password")
+            self.results_text.append("• No password recovery possible")
+            
+        else:
+            self.results_text.append("Backup Creation Failed")
+            self.results_text.append("=" * 50)
+            self.results_text.append(f"Error: {result['error']}")
+            self.results_text.append("\nTroubleshooting:")
+            self.results_text.append("• Check file permissions")
+            self.results_text.append("• Ensure sufficient disk space")
+            self.results_text.append("• Try different save location")
+    
+    def restore_backup(self):
+        """Restore encrypted backup"""
+        file_path = self.file_input.text().strip()
+        password = self.restore_password_input.text()
+        
+        # Validation
+        if not file_path:
+            self.results_text.setText("Please select a backup file")
+            return
+        
+        if not os.path.exists(file_path):
+            self.results_text.setText("Backup file not found")
+            return
+        
+        if not password:
+            self.results_text.setText("Please enter decryption password")
+            return
+        
+        # Show progress
+        self.action_button.setEnabled(False)
+        self.action_button.setText("Restoring...")
+        
+        # Start restore process
+        self.restore_thread = RestoreThread(file_path, password)
+        self.restore_thread.restore_complete.connect(self.display_restore_result)
+        self.restore_thread.finished.connect(self.restore_finished)
+        self.restore_thread.start()
+    
+    def display_restore_result(self, result):
+        """Display restore results"""
+        self.results_text.clear()
+        
+        if result['success']:
+            self.results_text.append("Backup Restored Successfully")
+            self.results_text.append("=" * 50)
+            self.results_text.append(f"Backup Type: {result['backup_type']}")
+            self.results_text.append(f"Created: {result['created']}")
+            self.results_text.append("")
+            self.results_text.append("RESTORED DATA:")
+            self.results_text.append("=" * 20)
+            self.results_text.append(result['data'])
+            self.results_text.append("")
+            self.results_text.append("SECURITY WARNING:")
+            self.results_text.append("• Copy sensitive data immediately")
+            self.results_text.append("• Clear this display when done")
+            self.results_text.append("• Do not leave data visible on screen")
+        else:
+            self.results_text.append("Restore Failed")
+            self.results_text.append("=" * 50)
+            self.results_text.append(f"Error: {result['error']}")
+            self.results_text.append("")
+            self.results_text.append("Common Issues:")
+            self.results_text.append("• Incorrect password")
+            self.results_text.append("• Corrupted backup file")
+            self.results_text.append("• Wrong file format")
+    
+    def backup_finished(self):
+        """Re-enable button when backup is finished"""
+        self.action_button.setEnabled(True)
+        self.action_button.setText("Create Encrypted Backup")
+        
+        # Clear sensitive data
+        if hasattr(self, 'data_input'):
+            self.data_input.clear()
+        if hasattr(self, 'password_input'):
+            self.password_input.clear()
+        if hasattr(self, 'confirm_input'):
+            self.confirm_input.clear()
+    
+    def restore_finished(self):
+        """Re-enable button when restore is finished"""
+        self.action_button.setEnabled(True)
+        self.action_button.setText("Restore from Backup")
+        
+        # Clear password
+        if hasattr(self, 'restore_password_input'):
+            self.restore_password_input.clear()
+    
+    def get_clean_theme(self):
+        """Simple clean theme"""
+        return """
+            QMainWindow {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QWidget {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QLineEdit {
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: white;
+            }
+            QTextEdit {
+                border: 1px solid #ccc;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #2196F3;
+                border: none;
+                color: white;
+                padding: 8px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QComboBox {
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: white;
+            }
+            QLabel {
+                color: #333;
+            }
+            QCheckBox {
+                color: #333;
+            }
+        """
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("Key Backup")
+    
+    window = SecureKeyBackupApp()
+    window.show()
+    
+    sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()

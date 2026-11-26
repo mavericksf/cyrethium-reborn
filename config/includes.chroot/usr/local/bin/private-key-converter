@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+
+import sys
+import hashlib
+import base58
+import ecdsa
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                            QHBoxLayout, QLabel, QPushButton, QLineEdit, 
+                            QTextEdit, QGroupBox, QComboBox, QCheckBox, QFrame)
+from PyQt5.QtCore import Qt, QDateTime
+from PyQt5.QtGui import QFont
+from Crypto.Hash import keccak
+
+
+class PrivateKeyConverter:
+    
+    @staticmethod
+    def hex_to_wif(hex_key, compressed=True, testnet=False):
+        try:
+            private_key = bytes.fromhex(hex_key)
+            if len(private_key) != 32:
+                return None, "Invalid private key length"
+            
+            if testnet:
+                prefix = b'\xef'
+            else:
+                prefix = b'\x80'
+            
+            extended_key = prefix + private_key
+            if compressed:
+                extended_key += b'\x01'
+            
+            hash1 = hashlib.sha256(extended_key).digest()
+            hash2 = hashlib.sha256(hash1).digest()
+            checksum = hash2[:4]
+            
+            wif = base58.b58encode(extended_key + checksum).decode('utf-8')
+            return wif, "Success"
+            
+        except Exception as e:
+            return None, f"Conversion error: {str(e)}"
+    
+    @staticmethod
+    def wif_to_hex(wif_key):
+        try:
+            decoded = base58.b58decode(wif_key)
+            
+            if len(decoded) not in [37, 38]:
+                return None, "Invalid WIF length"
+            payload = decoded[:-4]
+            checksum = decoded[-4:]
+            hash1 = hashlib.sha256(payload).digest()
+            hash2 = hashlib.sha256(hash1).digest()
+            
+            if checksum != hash2[:4]:
+                return None, "Invalid WIF checksum"
+            
+            private_key = payload[1:]
+            if len(decoded) == 38:
+                private_key = private_key[:-1]
+                compressed = True
+            else:
+                compressed = False
+            
+            hex_key = private_key.hex()
+            return hex_key, f"Success (Compressed: {compressed})"
+            
+        except Exception as e:
+            return None, f"Conversion error: {str(e)}"
+    
+    @staticmethod
+    def generate_addresses_from_hex(hex_key):
+        try:
+            private_key = bytes.fromhex(hex_key)
+            sk = ecdsa.SigningKey.from_string(private_key, curve=ecdsa.SECP256k1)
+            vk = sk.get_verifying_key()
+            
+            addresses = {}
+            
+            public_key = b'\x02' + vk.pubkey.point.x().to_bytes(32, byteorder='big') if vk.pubkey.point.y() % 2 == 0 else b'\x03' + vk.pubkey.point.x().to_bytes(32, byteorder='big')
+            sha256_hash = hashlib.sha256(public_key).digest()
+            ripemd160 = hashlib.new('ripemd160')
+            ripemd160.update(sha256_hash)
+            public_key_hash = ripemd160.digest()
+            versioned_payload = b'\x00' + public_key_hash
+            hash1 = hashlib.sha256(versioned_payload).digest()
+            hash2 = hashlib.sha256(hash1).digest()
+            checksum = hash2[:4]
+            addresses['Bitcoin'] = base58.b58encode(versioned_payload + checksum).decode('utf-8')
+            
+            public_key_full = vk.to_string()
+            keccak_hash = keccak.new(digest_bits=256)
+            keccak_hash.update(public_key_full)
+            eth_address = '0x' + keccak_hash.hexdigest()[-40:]
+            addresses['Ethereum'] = eth_address
+            
+            versioned_payload_ltc = b'\x30' + public_key_hash
+            hash1_ltc = hashlib.sha256(versioned_payload_ltc).digest()
+            hash2_ltc = hashlib.sha256(hash1_ltc).digest()
+            checksum_ltc = hash2_ltc[:4]
+            addresses['Litecoin'] = base58.b58encode(versioned_payload_ltc + checksum_ltc).decode('utf-8')
+            
+            return addresses, "Success"
+            
+        except Exception as e:
+            return None, f"Address generation error: {str(e)}"
+
+
+class PrivateKeyConverterApp(QMainWindow):
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet(self.get_dark_theme())
+    
+    def init_ui(self):
+        self.setWindowTitle("Private Key Converter")
+        self.setGeometry(250, 250, 600, 500)
+        
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        header = QLabel("Private Key Converter")
+        header.setAlignment(Qt.AlignCenter)
+        header.setFont(QFont("Arial", 16, QFont.Bold))
+        
+        format_label = QLabel("Format:")
+        self.input_type_combo = QComboBox()
+        self.input_type_combo.addItems(["HEX", "WIF"])
+        crypto_label = QLabel("Cryptocurrency:")
+        self.crypto_combo = QComboBox()
+        self.crypto_combo.addItems(["Bitcoin", "Ethereum", "Litecoin"])
+        
+        key_label = QLabel("Private Key:")
+        self.key_input = QLineEdit()
+        self.key_input.setPlaceholderText("Enter private key...")
+        self.convert_button = QPushButton("Convert")
+        self.convert_button.clicked.connect(self.convert_key)
+        
+        self.results_text = QTextEdit()
+        self.results_text.setReadOnly(True)
+        self.results_text.setPlainText("Enter a private key to convert...")
+        layout.addWidget(header)
+        layout.addWidget(format_label)
+        layout.addWidget(self.input_type_combo)
+        layout.addWidget(crypto_label)
+        layout.addWidget(self.crypto_combo)
+        layout.addWidget(key_label)
+        layout.addWidget(self.key_input)
+        layout.addWidget(self.convert_button)
+        layout.addWidget(self.results_text)
+        
+        central_widget.setLayout(layout)
+    
+    def convert_key(self):
+        key_input = self.key_input.text().strip()
+        input_format = self.input_type_combo.currentText()
+        crypto_text = self.crypto_combo.currentText()
+        
+        if not key_input:
+            self.results_text.setText("Please enter a private key")
+            return
+        
+        self.results_text.clear()
+        self.results_text.append(f"Converting {input_format} private key...")
+        self.results_text.append("=" * 60)
+        
+        hex_key = None
+        
+        if input_format == "HEX":
+            if len(key_input) == 64 and all(c in '0123456789abcdefABCDEF' for c in key_input):
+                hex_key = key_input.lower()
+                self.results_text.append("Valid HEX private key")
+            else:
+                self.results_text.append("Invalid HEX format (must be 64 hex characters)")
+                return
+        
+        elif input_format == "WIF":
+            hex_result, message = PrivateKeyConverter.wif_to_hex(key_input)
+            if hex_result:
+                hex_key = hex_result
+                self.results_text.append(f"WIF converted to HEX: {message}")
+            else:
+                self.results_text.append(f"WIF conversion failed: {message}")
+                return
+        
+        self.results_text.append("\nPRIVATE KEY FORMATS:")
+        self.results_text.append("-" * 40)
+        self.results_text.append(f"HEX: {hex_key}")
+        
+        wif_result, wif_message = PrivateKeyConverter.hex_to_wif(hex_key, True, False)
+        if wif_result:
+            self.results_text.append(f"WIF: {wif_result}")
+            self.results_text.append(f"WIF Info: {wif_message}")
+        
+        addresses, addr_message = PrivateKeyConverter.generate_addresses_from_hex(hex_key)
+        if addresses:
+            self.results_text.append("\nGENERATED ADDRESSES:")
+            self.results_text.append("-" * 40)
+            for crypto, address in addresses.items():
+                self.results_text.append(f"{crypto}: {address}")
+        else:
+            self.results_text.append(f"Address generation failed: {addr_message}")
+        
+        self.results_text.append("\n" + "=" * 60)
+        self.results_text.append(f"SECURITY WARNING: Keep private keys secure!")
+        self.results_text.append(f"Conversion completed at {QDateTime.currentDateTime().toString()}")
+        
+        self.statusBar().showMessage("Conversion completed")
+    
+    def get_dark_theme(self):
+        return """
+            QMainWindow {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QWidget {
+                background-color: #f0f0f0;
+                color: #333;
+            }
+            QLineEdit {
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: white;
+            }
+            QTextEdit {
+                border: 1px solid #ccc;
+                background-color: white;
+            }
+            QPushButton {
+                background-color: #4CAF50;
+                border: none;
+                color: white;
+                padding: 8px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QComboBox {
+                border: 1px solid #ccc;
+                padding: 5px;
+                background-color: white;
+                color: #333;
+            }
+            QLabel {
+                color: #333;
+            }
+        """
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("Cyrethium Private Key Converter")
+    
+    window = PrivateKeyConverterApp()
+    window.show()
+    
+    sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()

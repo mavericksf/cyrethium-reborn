@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Crypted Notes
+Comment=Secure encrypted note-taking application
+Comment[tr]=Güvenli şifreli not alma uygulaması
+Comment[es]=Aplicación segura de toma de notas cifradas
+Comment[fr]=Application sécurisée de prise de notes chiffrées
+Comment[de]=Sichere verschlüsselte Notiz-Anwendung
+Comment[ar]=تطبيق آمن لتدوين الملاحظات المشفرة
+Comment[ru]=Безопасное приложение для зашифрованных заметок
+Comment[zh]=安全的加密笔记应用程序
+Comment[ja]=安全な暗号化ノートアプリケーション
+Comment[ko]=안전한 암호화 노트 애플리케이션
+Comment[pt]=Aplicativo seguro de anotações criptografadas
+Comment[it]=Applicazione sicura per appunti crittografati
+Comment[nl]=Veilige versleutelde notitie-applicatie
+Comment[sv]=Säker krypterad anteckningsapplikation
+Comment[pl]=Bezpieczna aplikacja do zaszyfrowanych notatek
+Exec=crypted-notes
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/notes.png
+Categories=Encryption;
+StartupNotify=false

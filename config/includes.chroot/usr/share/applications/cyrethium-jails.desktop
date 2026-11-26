@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Cyrethium Jails
+Comment=Container and isolation management system
+Comment[tr]=Konteyner ve izolasyon yönetim sistemi
+Comment[es]=Sistema de gestión de contenedores y aislamiento
+Comment[fr]=Système de gestion de conteneurs et d'isolement
+Comment[de]=Container- und Isolationsmanagementsystem
+Comment[ar]=نظام إدارة الحاويات والعزل
+Comment[ru]=Система управления контейнерами и изоляцией
+Comment[zh]=容器和隔离管理系统
+Comment[ja]=コンテナと分離管理システム
+Comment[ko]=컨테이너 및 격리 관리 시스템
+Comment[pt]=Sistema de gerenciamento de contêineres e isolamento
+Comment[it]=Sistema di gestione container e isolamento
+Comment[nl]=Container- en isolatiemanagementsysteem
+Comment[sv]=Container- och isoleringshanteringssystem
+Comment[pl]=System zarządzania kontenerami i izolacją
+Exec=mate-terminal -- bash -c "/usr/local/bin/cyrethium-jails; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/jail.png
+Categories=Security;
+StartupNotify=false

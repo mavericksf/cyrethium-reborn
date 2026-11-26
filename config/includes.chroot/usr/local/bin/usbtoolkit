@@ -1,0 +1,478 @@
+#!/bin/bash
+
+# USB Toolkit - A tool for secure USB drive operations
+# Features: USB device listing, secure erasing, filling with random data, formatting
+
+# Color definitions
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+BLUE="\033[0;34m"
+CYAN="\033[0;36m"
+WHITE="\033[1;37m"
+NC="\033[0m" # No Color
+
+# Root check
+if [ "$(id -u)" -ne 0 ]; then
+    echo -e "${RED}Error: This script requires root privileges. Run with 'sudo'.${NC}"
+    exit 1
+
+fi
+
+# Check for required programs
+for cmd in lsblk dd shred mkfs.vfat mkfs.ntfs mkfs.ext4; do
+    if ! command -v $cmd &> /dev/null; then
+        echo -e "${RED}Error: $cmd not found. Please install the required packages.${NC}"
+        exit 1
+    fi
+done
+
+# Global variables
+SELECTED_DEVICE=""
+
+# Usage information
+usage() {
+    echo -e "${GREEN}USB Toolkit - Secure USB drive operations${NC}"
+    echo -e "Usage: $(basename $0) [option]"
+    echo -e "Options:"
+    echo -e "  -h, --help\t\tDisplay this help message"
+    echo -e "  -l, --list\t\tList connected USB devices"
+    echo -e "  -i, --info DEVICE\tShow detailed information about the specified device"
+    echo -e "  -e, --erase DEVICE\tSecurely erase the specified device"
+    echo -e "  -r, --random DEVICE\tFill the specified device with random data"
+    echo -e "  -f, --format DEVICE FS\tFormat the specified device (FS: vfat, ntfs, ext4)"
+    echo -e "  --interactive\t\tStart interactive mode"
+    echo
+    echo -e "Example: $(basename $0) --erase /dev/sdb"
+    echo -e "Example: $(basename $0) --format /dev/sdb vfat"
+}
+
+# Function to list USB devices
+list_usb_devices() {
+    echo -e "${BLUE}Listing connected USB devices...${NC}"
+    echo
+    
+    # List only removable USB devices
+    lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL,VENDOR,SERIAL -d | grep -E 'sd[b-z]|sd[a-z][a-z]'
+    
+    # If no devices found
+    if [ $? -ne 0 ]; then
+        echo -e "${YELLOW}No connected USB devices found.${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Function to display device information
+show_device_info() {
+    local device=$1
+    
+    # Device check
+    if [ ! -b "$device" ]; then
+        echo -e "${RED}Error: $device is not a valid block device.${NC}"
+        return 1
+    fi
+    
+    echo -e "${BLUE}Device information: $device${NC}"
+    echo -e "${YELLOW}----------------------------------------${NC}"
+    
+    # Basic information
+    lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL,VENDOR,SERIAL "$device"
+    
+    # Detailed information
+    echo -e "\n${YELLOW}Disk Partitions:${NC}"
+    fdisk -l "$device"
+    
+    # Filesystem information
+    echo -e "\n${YELLOW}Filesystem Information:${NC}"
+    blkid "$device"*
+    
+    return 0
+}
+
+# Secure erase function
+secure_erase() {
+    local device=$1
+    
+    # Device check
+    if [ ! -b "$device" ]; then
+        echo -e "${RED}Error: $device is not a valid block device.${NC}"
+        return 1
+    fi
+    
+    # System disk check
+    if is_system_disk "$device"; then
+        echo -e "${RED}WARNING: This operation may affect the system disk and cause data loss!${NC}"
+        echo -e "${RED}Operation canceled.${NC}"
+        return 1
+    fi
+    
+    # Unmount partitions
+    unmount_partitions "$device"
+    
+    echo -e "${YELLOW}WARNING: ALL DATA ON $device WILL BE PERMANENTLY DELETED!${NC}"
+    echo -e "${YELLOW}This operation cannot be undone. Do you want to continue? (y/N)${NC}"
+    read -r confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}Operation canceled.${NC}"
+        return 0
+    fi
+    
+    echo -e "${BLUE}Starting secure erase operation...${NC}"
+    echo -e "${YELLOW}This process may take a long time depending on the device size.${NC}"
+    
+    # Secure erase with shred (3 passes)
+    shred -v -n 3 -z "$device"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Secure erase operation completed successfully.${NC}"
+    else
+        echo -e "${RED}An error occurred during the secure erase operation.${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Function to fill with random data
+fill_random_data() {
+    local device=$1
+    
+    # Device check
+    if [ ! -b "$device" ]; then
+        echo -e "${RED}Error: $device is not a valid block device.${NC}"
+        return 1
+    fi
+    
+    # System disk check
+    if is_system_disk "$device"; then
+        echo -e "${RED}WARNING: This operation may affect the system disk and cause data loss!${NC}"
+        echo -e "${RED}Operation canceled.${NC}"
+        return 1
+    fi
+    
+    # Unmount partitions
+    unmount_partitions "$device"
+    
+    echo -e "${YELLOW}WARNING: ALL DATA ON $device WILL BE PERMANENTLY DELETED!${NC}"
+    echo -e "${YELLOW}This operation cannot be undone. Do you want to continue? (y/N)${NC}"
+    read -r confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}Operation canceled.${NC}"
+        return 0
+    fi
+    
+    echo -e "${BLUE}Starting random data fill operation...${NC}"
+    echo -e "${YELLOW}This process may take a long time depending on the device size.${NC}"
+    
+    # Fill with random data using /dev/urandom
+    dd if=/dev/urandom of="$device" bs=4M status=progress
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Random data fill operation completed successfully.${NC}"
+    else
+        echo -e "${RED}An error occurred during the random data fill operation.${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Formatting function
+format_device() {
+    local device=$1
+    local fs_type=$2
+    
+    # Device check
+    if [ ! -b "$device" ]; then
+        echo -e "${RED}Error: $device is not a valid block device.${NC}"
+        return 1
+    fi
+    
+    # System disk check
+    if is_system_disk "$device"; then
+        echo -e "${RED}WARNING: This operation may affect the system disk and cause data loss!${NC}"
+        echo -e "${RED}Operation canceled.${NC}"
+        return 1
+    fi
+    
+    # Filesystem check
+    case "$fs_type" in
+        vfat|fat32)
+            fs_cmd="mkfs.vfat -F 32"
+            fs_name="FAT32"
+            ;;
+        ntfs)
+            fs_cmd="mkfs.ntfs -f"
+            fs_name="NTFS"
+            ;;
+        ext4)
+            fs_cmd="mkfs.ext4"
+            fs_name="EXT4"
+            ;;
+        *)
+            echo -e "${RED}Error: Unsupported filesystem: $fs_type${NC}"
+            echo -e "${YELLOW}Supported filesystems: vfat, ntfs, ext4${NC}"
+            return 1
+            ;;
+    esac
+    
+    # Unmount partitions
+    unmount_partitions "$device"
+    
+    echo -e "${YELLOW}WARNING: ALL DATA ON $device WILL BE PERMANENTLY DELETED!${NC}"
+    echo -e "${YELLOW}Device will be formatted with $fs_name filesystem.${NC}"
+    echo -e "${YELLOW}This operation cannot be undone. Do you want to continue? (y/N)${NC}"
+    read -r confirm
+    
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}Operation canceled.${NC}"
+        return 0
+    fi
+    
+    # Create a new MBR partition table
+    echo -e "${BLUE}Creating a new partition table...${NC}"
+    echo -e "o\nn\np\n1\n\n\nw" | fdisk "$device"
+    
+    # Determine the newly created partition
+    local part_device
+    if [[ "$device" =~ [0-9]$ ]]; then
+        part_device="${device}p1"
+    else
+        part_device="${device}1"
+    fi
+    
+    # Wait for partition table to update
+    sleep 2
+    
+    # Format the new partition
+    echo -e "${BLUE}Starting formatting operation with $fs_name filesystem...${NC}"
+    
+    # Create filesystem
+    if [ -b "$part_device" ]; then
+        $fs_cmd "$part_device"
+    else
+        echo -e "${RED}Error: Could not create partition: $part_device${NC}"
+        return 1
+    fi
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Formatting operation completed successfully.${NC}"
+        echo -e "${GREEN}Device formatted with $fs_name filesystem: $part_device${NC}"
+    else
+        echo -e "${RED}An error occurred during the formatting operation.${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# System disk check
+is_system_disk() {
+    local device=$1
+    local system_disk=$(mount | grep " / " | cut -d' ' -f1)
+    
+    # Check if it's a system disk
+    if [[ "$system_disk" == "$device"* ]] || [[ "$device" == "/dev/sda"* ]]; then
+        return 0  # true - it's a system disk
+    fi
+    
+    return 1  # false - not a system disk
+}
+
+# Unmount partitions
+unmount_partitions() {
+    local device=$1
+    
+    echo -e "${BLUE}Unmounting connected partitions...${NC}"
+    
+    # Find and unmount all partitions connected to the device
+    for part in $(lsblk -o NAME,MOUNTPOINT -n -l "$device" | grep -v "^$device" | awk '{print $1}'); do
+        local mountpoint=$(lsblk -o NAME,MOUNTPOINT -n -l "/dev/$part" | awk '{print $2}')
+        if [ -n "$mountpoint" ] && [ "$mountpoint" != "[SWAP]" ]; then
+            echo -e "${YELLOW}Unmounting: /dev/$part ($mountpoint)${NC}"
+            umount "/dev/$part"
+        fi
+    done
+}
+
+# Interactive mode
+interactive_mode() {
+    while true; do
+        clear
+        echo -e "${GREEN}=== USB Toolkit - Interactive Mode ===${NC}"
+        echo -e "${CYAN}1.${NC} ${WHITE}List USB devices${NC}"
+        echo -e "${CYAN}2.${NC} ${WHITE}Show device information${NC}"
+        echo -e "${CYAN}3.${NC} ${WHITE}Secure erase (shred)${NC}"
+        echo -e "${CYAN}4.${NC} ${WHITE}Fill with random data${NC}"
+        echo -e "${CYAN}5.${NC} ${WHITE}Format${NC}"
+        echo -e "${CYAN}0.${NC} ${WHITE}Exit${NC}"
+        echo
+        
+        if [ -n "$SELECTED_DEVICE" ]; then
+            echo -e "${YELLOW}Selected device: $SELECTED_DEVICE${NC}"
+        fi
+        
+        echo -e "${CYAN}Your choice:${NC} "
+        read -r choice
+        
+        case "$choice" in
+            1)
+                list_usb_devices
+                echo -e "\n${CYAN}Would you like to select a device? ${WHITE}(e.g.: /dev/sdb)${NC} ${YELLOW}[Leave empty: No]${NC} "
+                read -r device
+                if [ -n "$device" ]; then
+                    SELECTED_DEVICE="$device"
+                fi
+                ;;
+            2)
+                if [ -z "$SELECTED_DEVICE" ]; then
+                    echo -e "${YELLOW}Please select a device first.${NC}"
+                    list_usb_devices
+                    echo -e "\n${CYAN}Select device ${WHITE}(e.g.: /dev/sdb):${NC} "
+                    read -r SELECTED_DEVICE
+                fi
+                
+                if [ -n "$SELECTED_DEVICE" ]; then
+                    show_device_info "$SELECTED_DEVICE"
+                fi
+                ;;
+            3)
+                if [ -z "$SELECTED_DEVICE" ]; then
+                    echo -e "${YELLOW}Please select a device first.${NC}"
+                    list_usb_devices
+                    echo -e "\n${CYAN}Select device ${WHITE}(e.g.: /dev/sdb):${NC} "
+                    read -r SELECTED_DEVICE
+                fi
+                
+                if [ -n "$SELECTED_DEVICE" ]; then
+                    secure_erase "$SELECTED_DEVICE"
+                fi
+                ;;
+            4)
+                if [ -z "$SELECTED_DEVICE" ]; then
+                    echo -e "${YELLOW}Please select a device first.${NC}"
+                    list_usb_devices
+                    echo -e "\n${CYAN}Select device ${WHITE}(e.g.: /dev/sdb):${NC} "
+                    read -r SELECTED_DEVICE
+                fi
+                
+                if [ -n "$SELECTED_DEVICE" ]; then
+                    fill_random_data "$SELECTED_DEVICE"
+                fi
+                ;;
+            5)
+                if [ -z "$SELECTED_DEVICE" ]; then
+                    echo -e "${YELLOW}Please select a device first.${NC}"
+                    list_usb_devices
+                    echo -e "\n${CYAN}Select device ${WHITE}(e.g.: /dev/sdb):${NC} "
+                    read -r SELECTED_DEVICE
+                fi
+                
+                if [ -n "$SELECTED_DEVICE" ]; then
+                    echo -e "${CYAN}Select filesystem:${NC}"
+                    echo -e "${CYAN}1.${NC} ${WHITE}FAT32 (vfat)${NC}"
+                    echo -e "${CYAN}2.${NC} ${WHITE}NTFS${NC}"
+                    echo -e "${CYAN}3.${NC} ${WHITE}EXT4${NC}"
+                    echo -e "${CYAN}Your choice:${NC} "
+                    read -r fs_choice
+                    
+                    case "$fs_choice" in
+                        1) format_device "$SELECTED_DEVICE" "vfat" ;;
+                        2) format_device "$SELECTED_DEVICE" "ntfs" ;;
+                        3) format_device "$SELECTED_DEVICE" "ext4" ;;
+                        *) echo -e "${RED}Invalid choice.${NC}" ;;
+                    esac
+                fi
+                ;;
+            0)
+                echo -e "${GREEN}Exiting USB Toolkit...${NC}"
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}Invalid choice.${NC}"
+                ;;
+        esac
+        
+        echo -e "\n${BLUE}Press Enter to continue...${NC}"
+        read -r
+    done
+}
+
+# Main program
+main() {
+    # Parameter check
+    if [ $# -eq 0 ]; then
+        interactive_mode
+        exit 0
+    fi
+    
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -l|--list)
+                list_usb_devices
+                exit $?
+                ;;
+            -i|--info)
+                if [ -z "$2" ]; then
+                    echo -e "${RED}Error: No device specified for --info parameter.${NC}"
+                    usage
+                    exit 1
+                fi
+                show_device_info "$2"
+                exit $?
+                shift
+                ;;
+            -e|--erase)
+                if [ -z "$2" ]; then
+                    echo -e "${RED}Error: No device specified for --erase parameter.${NC}"
+                    usage
+                    exit 1
+                fi
+                secure_erase "$2"
+                exit $?
+                shift
+                ;;
+            -r|--random)
+                if [ -z "$2" ]; then
+                    echo -e "${RED}Error: No device specified for --random parameter.${NC}"
+                    usage
+                    exit 1
+                fi
+                fill_random_data "$2"
+                exit $?
+                shift
+                ;;
+            -f|--format)
+                if [ -z "$2" ] || [ -z "$3" ]; then
+                    echo -e "${RED}Error: No device or filesystem specified for --format parameter.${NC}"
+                    usage
+                    exit 1
+                fi
+                format_device "$2" "$3"
+                exit $?
+                shift 2
+                ;;
+            --interactive)
+                interactive_mode
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}Error: Unknown parameter: $1${NC}"
+                usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
+
+# Start the program
+main "$@"

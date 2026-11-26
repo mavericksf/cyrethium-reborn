@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Cyrethonion Tor Router
+Comment=Route all system traffic through the Tor network.
+Comment[tr]=Tüm sistem trafiğini Tor ağı üzerinden yönlendirir.
+Comment[es]=Rutea todo el tráfico del sistema a través de la red Tor.
+Comment[fr]=Routez tout le trafic système à travers le réseau Tor.
+Comment[de]=Alle Systemverkehr durch das Tor-Netzwerk weiterleiten.
+Comment[ar]=توجيه جميع حركة النظام عبر شبكة Tor.
+Comment[ru]=Перенаправьте весь трафик системы через сеть Tor.
+Comment[zh]=将所有系统流量通过 Tor 网络路由。
+Comment[ja]=すべてのシステムトラフィックを Tor ネットワークを介してルーティングします。
+Comment[ko]=모든 시스템 트래픽을 Tor 네트워크를 통해 라우팅합니다.
+Comment[pt]=Roteie todo o tráfego do sistema através da rede Tor.
+Comment[it]=Ridiretto tutto il traffico del sistema attraverso la rete Tor.
+Comment[nl]=Alle systeemverkeer door het Tor-netwerk doorsturen.
+Comment[sv]=Routa all systemtrafik genom Tor-nätverket.
+Comment[pl]=Przekieruj wszystkie ruch systemowy przez sieć Tor.
+Exec=cyrethonion-check
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/hicolor/scalable/apps/cyrethonion.png
+Categories=Privacy;
+StartupNotify=false 

@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Tor Portal 
+Comment=Monitor and control Tor network connections
+Comment[tr]=Tor ağ bağlantılarını izle ve kontrol et
+Comment[es]=Monitorea y controla las conexiones de red Tor
+Comment[fr]=Surveille et contrôle les connexions réseau Tor
+Comment[de]=Überwacht und steuert Tor-Netzwerkverbindungen
+Comment[ar]=مراقبة والتحكم في اتصالات شبكة تور
+Comment[ru]=Мониторинг и управление сетевыми подключениями Tor
+Comment[zh]=监控和控制Tor网络连接
+Comment[ja]=Torネットワーク接続を監視して制御します
+Comment[ko]=Tor 네트워크 연결을 모니터링하고 제어합니다
+Comment[pt]=Monitora e controla conexões de rede Tor
+Comment[it]=Monitora e controlla le connessioni di rete Tor
+Comment[nl]=Bewaakt en bestuurt Tor netwerk verbindingen
+Comment[sv]=Övervakar och kontrollerar Tor nätverksanslutningar
+Comment[pl]=Monitoruje i kontroluje połączenia sieciowe Tor
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/torportal-cli; exec bash"
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/torportal.png
+Categories=NodeAnalysis;
+StartupNotify=false

@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Monero CLI
+Comment=Monero Command Line Interface
+Comment[tr]=Monero Komut Satırı Arayüzü
+Comment[es]=Interfaz de línea de comandos de Monero
+Comment[fr]=Interface de ligne de commande de Monero
+Comment[de]=Monero-Kommandozeilen-Schnittstelle
+Comment[ar]=واجهة سطر الأوامر لـ Monero
+Comment[ru]=Командная строка для Monero
+Comment[zh]=Monero 命令行界面
+Comment[ja]=Monero コマンドラインインターフェース
+Comment[ko]=Monero 명령줄 인터페이스
+Comment[pt]=Interface de linha de comando para Monero
+Comment[it]=Interfaccia a riga di comando di Monero
+Comment[nl]=Monero Command Line Interface
+Comment[sv]=Monero Kommandoradsgränssnitt
+Comment[pl]=Interfejs wiersza poleceń Monero
+Exec=mate-terminal -- bash -c "monero-wallet-cli --help; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/monero.png
+Categories=Cryptocurrency;
+StartupNotify=false

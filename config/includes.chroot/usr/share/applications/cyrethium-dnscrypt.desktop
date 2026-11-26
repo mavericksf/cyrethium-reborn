@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Cyrethium DNSCrypt
+Comment=Secure DNS encryption with DNSCrypt protocol
+Comment[tr]=DNSCrypt protokolü ile güvenli DNS şifreleme
+Comment[es]=Cifrado DNS seguro con protocolo DNSCrypt
+Comment[fr]=Chiffrement DNS sécurisé avec protocole DNSCrypt
+Comment[de]=Sichere DNS-Verschlüsselung mit DNSCrypt-Protokoll
+Comment[ar]=تشفير DNS آمن مع بروتوكول DNSCrypt
+Comment[ru]=Безопасное шифрование DNS с протоколом DNSCrypt
+Comment[zh]=使用DNSCrypt协议的安全DNS加密
+Comment[ja]=DNSCryptプロトコルによる安全なDNS暗号化
+Comment[ko]=DNSCrypt 프로토콜을 사용한 안전한 DNS 암호화
+Comment[pt]=Criptografia DNS segura com protocolo DNSCrypt
+Comment[it]=Crittografia DNS sicura con protocollo DNSCrypt
+Comment[nl]=Veilige DNS-versleuteling met DNSCrypt-protocol
+Comment[sv]=Säker DNS-kryptering med DNSCrypt-protokoll
+Comment[pl]=Bezpieczne szyfrowanie DNS z protokołem DNSCrypt
+Exec=mate-terminal -- bash -c "/usr/local/bin/cyrethium-dnscrypt; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/dnscrypt.png
+Categories=Privacy;
+StartupNotify=false

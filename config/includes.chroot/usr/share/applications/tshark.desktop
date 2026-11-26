@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Tshark
+Comment=Wireshark terminal interface
+Comment[tr]=Wireshark terminal arayüzü
+Comment[es]=Interfaz terminal de Wireshark
+Comment[fr]=Interface de terminal de Wireshark
+Comment[de]=Wireshark Terminal-Interface
+Comment[ar]=واجهة طرفية لـ Wireshark
+Comment[ru]=Терминальный интерфейс Wireshark
+Comment[zh]=Wireshark 终端接口
+Comment[ja]=Wireshark ターミナルインターフェース
+Comment[ko]=Wireshark 터미널 인터페이스
+Comment[pt]=Interface terminal de Wireshark
+Comment[it]=Interfaccia di terminale di Wireshark
+Comment[nl]=Wireshark Terminal-Interface
+Comment[sv]=Wireshark Terminal-gränssnitt
+Comment[pl]=Interfejs terminalu Wireshark
+Exec=mate-terminal -- bash -c "sudo tshark; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/tshark.png
+Categories=NetworkSec;
+StartupNotify=false

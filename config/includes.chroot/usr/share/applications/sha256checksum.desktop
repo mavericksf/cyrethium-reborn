@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=SHA256 Checksum Verifier
+Comment=Calculate and verify SHA256 checksums for file integrity
+Comment[tr]=Dosya bütünlüğü için SHA256 sağlama toplamı hesapla ve doğrula
+Comment[es]=Calcular y verificar sumas de verificación SHA256 para integridad de archivos
+Comment[fr]=Calculer et vérifier les sommes de contrôle SHA256 pour l'intégrité des fichiers
+Comment[de]=SHA256-Prüfsummen für Dateiintegrität berechnen und überprüfen
+Comment[ar]=حساب والتحقق من مجاميع التحقق SHA256 لسلامة الملفات
+Comment[ru]=Вычисление и проверка контрольных сумм SHA256 для целостности файлов
+Comment[zh]=计算和验证SHA256校验和以确保文件完整性
+Comment[ja]=ファイルの整合性のためのSHA256チェックサムの計算と検証
+Comment[ko]=파일 무결성을 위한 SHA256 체크섬 계산 및 검증
+Comment[pt]=Calcular e verificar somas de verificação SHA256 para integridade de arquivos
+Comment[it]=Calcolare e verificare checksum SHA256 per l'integrità dei file
+Comment[nl]=Bereken en verifieer SHA256 checksums voor bestandsintegriteit
+Comment[sv]=Beräkna och verifiera SHA256 kontrollsummor för filintegritet
+Comment[pl]=Oblicz i zweryfikuj sumy kontrolne SHA256 dla integralności plików
+Exec=mate-terminal -- bash -c "/usr/local/bin/sha256checksum; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=Security;
+StartupNotify=false

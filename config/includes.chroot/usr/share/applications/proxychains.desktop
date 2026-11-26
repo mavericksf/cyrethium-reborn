@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Proxychains
+Comment=Configure and manage proxy chains for network anonymity
+Comment[tr]=Ağ anonimliği için proxy zincirleri yapılandır ve yönet
+Comment[es]=Configurar y administrar cadenas de proxy para anonimato de red
+Comment[fr]=Configurer et gérer les chaînes de proxy pour l'anonymat réseau
+Comment[de]=Proxy-Ketten für Netzwerk-Anonymität konfigurieren und verwalten
+Comment[ar]=تكوين وإدارة سلاسل البروكسي لإخفاء هوية الشبكة
+Comment[ru]=Настройка и управление цепочками прокси для анонимности сети
+Comment[zh]=配置和管理代理链以实现网络匿名
+Comment[ja]=ネットワーク匿名性のためのプロキシチェーンの設定と管理
+Comment[ko]=네트워크 익명성을 위한 프록시 체인 구성 및 관리
+Comment[pt]=Configurar e gerenciar cadeias de proxy para anonimato de rede
+Comment[it]=Configurare e gestire catene di proxy per l'anonimato di rete
+Comment[nl]=Configureer en beheer proxy-ketens voor netwerk-anonimiteit
+Comment[sv]=Konfigurera och hantera proxy-kedjor för nätverksanonymitet
+Comment[pl]=Konfiguruj i zarządzaj łańcuchami proxy dla anonimowości sieci
+Exec=mate-terminal -- bash -c "proxychains; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=Privacy;
+StartupNotify=false

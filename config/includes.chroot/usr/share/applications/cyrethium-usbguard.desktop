@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=USB Guard
+Comment=USB device access control and security monitoring
+Comment[tr]=USB cihaz erişim kontrolü ve güvenlik izleme
+Comment[es]=Control de acceso a dispositivos USB y monitoreo de seguridad
+Comment[fr]=Contrôle d'accès aux périphériques USB et surveillance de sécurité
+Comment[de]=USB-Gerätezugriffskontrolle und Sicherheitsüberwachung
+Comment[ar]=التحكم في الوصول لأجهزة USB ومراقبة الأمان
+Comment[ru]=Контроль доступа к USB-устройствам и мониторинг безопасности
+Comment[zh]=USB设备访问控制和安全监控
+Comment[ja]=USBデバイスアクセス制御とセキュリティ監視
+Comment[ko]=USB 장치 액세스 제어 및 보안 모니터링
+Comment[pt]=Controle de acesso a dispositivos USB e monitoramento de segurança
+Comment[it]=Controllo accesso dispositivi USB e monitoraggio sicurezza
+Comment[nl]=USB-apparaat toegangscontrole en beveiligingsmonitoring
+Comment[sv]=USB-enhetens åtkomstkontroll och säkerhetsövervakning
+Comment[pl]=Kontrola dostępu do urządzeń USB i monitorowanie bezpieczeństwa
+Exec=mate-terminal -- bash -c "sudo /usr/local/bin/cyrethium-usbguard; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/usbguard.png
+Categories=Security;
+StartupNotify=false

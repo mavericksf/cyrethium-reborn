@@ -1,0 +1,8 @@
+# Substitui as bibliotecas Python instaladas via pip na ISO original
+python3-base58
+python3-scapy
+python3-tabulate
+python3-pycryptodome
+python3-requests
+python3-socks
+python3-pyqt5

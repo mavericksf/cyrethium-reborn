@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Balance Checker
+Comment=Check cryptocurrency balances for Bitcoin, Ethereum, Litecoin addresses
+Comment[tr]=Bitcoin, Ethereum, Litecoin adreslerinin bakiyelerini kontrol et
+Comment[es]=Verificar saldos de criptomonedas para direcciones Bitcoin, Ethereum, Litecoin
+Comment[fr]=Vérifier les soldes de cryptomonnaies pour les adresses Bitcoin, Ethereum, Litecoin
+Comment[de]=Kryptowährungs-Guthaben für Bitcoin, Ethereum, Litecoin-Adressen prüfen
+Comment[ar]=فحص أرصدة العملات المشفرة لعناوين البيتكوين والإيثيريوم واللايتكوين
+Comment[ru]=Проверка балансов криптовалют для адресов Bitcoin, Ethereum, Litecoin
+Comment[zh]=检查比特币、以太坊、莱特币地址的加密货币余额
+Comment[ja]=Bitcoin、Ethereum、Litecoinアドレスの暗号通貨残高を確認
+Comment[ko]=비트코인, 이더리움, 라이트코인 주소의 암호화폐 잔액 확인
+Comment[pt]=Verificar saldos de criptomoedas para endereços Bitcoin, Ethereum, Litecoin
+Comment[it]=Controlla i saldi delle criptovalute per indirizzi Bitcoin, Ethereum, Litecoin
+Comment[nl]=Controleer cryptocurrency saldi voor Bitcoin, Ethereum, Litecoin adressen
+Comment[sv]=Kontrollera kryptovaluta saldon för Bitcoin, Ethereum, Litecoin adresser
+Comment[pl]=Sprawdź salda kryptowalut dla adresów Bitcoin, Ethereum, Litecoin
+Exec=balance-checker
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/balance.png
+Categories=Cryptocurrency;
+StartupNotify=false

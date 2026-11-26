@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=Key Backup
+Comment=Secure encrypted backup tool for cryptocurrency private keys and seeds
+Comment[tr]=Kripto para özel anahtarları ve seed'leri için güvenli şifreli yedekleme aracı
+Comment[es]=Herramienta de respaldo cifrado seguro para claves privadas y semillas de criptomonedas
+Comment[fr]=Outil de sauvegarde chiffrée sécurisée pour clés privées et graines de cryptomonnaies
+Comment[de]=Sicheres verschlüsseltes Backup-Tool für Kryptowährungs-Private-Keys und Seeds
+Comment[ar]=أداة نسخ احتياطي مشفرة آمنة للمفاتيح الخاصة وبذور العملات المشفرة
+Comment[ru]=Безопасный инструмент шифрованного резервного копирования для приватных ключей и сидов
+Comment[zh]=加密货币私钥和种子的安全加密备份工具
+Comment[ja]=暗号通貨の秘密鍵とシードの安全な暗号化バックアップツール
+Comment[ko]=암호화폐 개인키와 시드를 위한 안전한 암호화 백업 도구
+Comment[pt]=Ferramenta de backup criptografado seguro para chaves privadas e sementes de criptomoedas
+Comment[it]=Strumento di backup crittografato sicuro per chiavi private e semi di criptovalute
+Comment[nl]=Veilige versleutelde backup tool voor cryptocurrency private keys en seeds
+Comment[sv]=Säkert krypterat backup-verktyg för kryptovaluta privata nycklar och frön
+Comment[pl]=Bezpieczne narzędzie szyfrowanej kopii zapasowej dla kluczy prywatnych i nasion kryptowalut
+Exec=key-backup
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/cyrethium/keybackup.png
+Categories=Cryptocurrency;
+StartupNotify=false

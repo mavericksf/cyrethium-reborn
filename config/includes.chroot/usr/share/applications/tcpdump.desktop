@@ -1,0 +1,24 @@
+[Desktop Entry]
+Version=1.0
+Name=TCPdump
+Comment=Network traffic analyzer
+Comment[tr]=tcpdump, ağ üzerinden geçen veri paketlerini yakalayıp analiz etmeye yarayan komut satırı aracıdır.
+Comment[es]=Analizador de tráfico de red
+Comment[fr]=Analyseur de trafic réseau
+Comment[de]=Netzwerkverkehrsanalysator
+Comment[ar]=محلل حركة مرور الشبكة
+Comment[ru]=Анализатор сетевого трафика
+Comment[zh]=网络流量分析器
+Comment[ja]=ネットワークトラフィックアナライザー
+Comment[ko]=네트워크 트래픽 분석기
+Comment[pt]=Analisador de tráfego de rede
+Comment[it]=Analizzatore del traffico di rete
+Comment[nl]=Netwerkverkeersanalysator
+Comment[sv]=Nätverkstrafikanalysator
+Comment[pl]=Analizator ruchu sieciowego
+Exec=mate-terminal -- bash -c "sudo tcpdump; exec bash"
+Terminal=true
+Type=Application
+Icon=/usr/share/icons/cyrethium/terminal.png
+Categories=NetworkSec;
+StartupNotify=false
