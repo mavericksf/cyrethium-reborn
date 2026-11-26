@@ -18,3 +18,8 @@ config/chroot
 config/common
 config/source
 local/
+binary.modified_timestamps
+chroot.files
+config/hooks/live/
+config/hooks/normal/[1-9]*.hook.chroot
+config/package-lists/live.list.chroot
