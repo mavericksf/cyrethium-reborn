@@ -43,3 +43,10 @@ conky-all
 python3-gi
 gir1.2-gtk-3.0
 zenity
+
+# Complementos do painel MATE (corrige InhibitApplet e icones)
+mate-power-manager
+mate-applets
+mate-media
+mate-themes
+mate-icon-theme
